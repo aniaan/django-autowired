@@ -37,6 +37,7 @@ packages = [
 [tool.poetry.dependencies]
 python = "^3.8"
 django = ">=2.2"
+pydantic = "^1.7.2"
 
 [tool.poetry.dev-dependencies]
 pre-commit = "^2.8.2"
