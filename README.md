@@ -1,2 +1,3 @@
-# django-di
+# django-autowired
+
 Django dependency injection
