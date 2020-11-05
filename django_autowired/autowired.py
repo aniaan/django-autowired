@@ -1,4 +1,3 @@
-import inspect
 from typing import Any
 from typing import Callable
 from typing import Dict
@@ -19,13 +18,13 @@ class Autowired(object):
             # TODO
             self._view_dependant[func] = None
 
-            def inner() -> Any:
+            def inner(*args, **kwargs) -> Any:
                 """
                 When called, the method will identify and inject the dependency
                 """
                 # identify
                 # inject
-                return func()
+                return func(*args, **kwargs)
 
             return inner
 
@@ -36,7 +35,7 @@ autowired = Autowired()
 
 
 class ClassView(View):
-    # @autowired(description="this is post method")
+    @autowired(description="this is post method")
     def post(self, request):
         pass
 
@@ -51,6 +50,6 @@ def func_view(request):
 
 
 if __name__ == "__main__":
-    sig = inspect.signature(ClassView.post)
-    print(getattr(ClassView.post, "__globals__"))
-    print(globals())
+    v = ClassView()
+    v.post(1)
+    # print(v.put)
