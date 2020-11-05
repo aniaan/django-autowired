@@ -1,7 +1,10 @@
+import inspect
 from typing import Any
 from typing import Callable
 from typing import Dict
 from typing import Optional
+
+from django.views import View
 
 ViewFunc = Callable
 
@@ -32,11 +35,22 @@ class Autowired(object):
 autowired = Autowired()
 
 
-class View(object):
-    @autowired(description="this is post method")
+class ClassView(View):
+    # @autowired(description="this is post method")
     def post(self, request):
         pass
 
-    @autowired(description="this is put method")
+    # @autowired(description="this is put method")
     def put(self, request):
         pass
+
+
+# @autowired(description="this is func view")
+def func_view(request):
+    pass
+
+
+if __name__ == "__main__":
+    sig = inspect.signature(ClassView.post)
+    print(getattr(ClassView.post, "__globals__"))
+    print(globals())
