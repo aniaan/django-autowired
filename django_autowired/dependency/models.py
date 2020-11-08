@@ -99,7 +99,9 @@ class Dependant(object):
             # The first paramter must be request
             typed_params = signature_params[1:]
 
-        dependant = Dependant(call=call, ismethod=ismethod, name=name)
+        dependant = Dependant(
+            call=call, ismethod=ismethod, name=name, parent_dependant=parent_dependant
+        )
 
         for param in typed_params:
             if isinstance(param.default, params.Depends):
