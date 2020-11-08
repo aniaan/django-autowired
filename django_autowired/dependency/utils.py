@@ -3,7 +3,6 @@ import inspect
 from typing import Any
 from typing import Callable
 from typing import Dict
-from typing import List
 from typing import Optional
 from typing import Type
 from typing import Union
@@ -13,17 +12,15 @@ from django_autowired.params import Param
 from pydantic import BaseConfig
 from pydantic import BaseModel
 from pydantic.class_validators import Validator
-from pydantic.fields import (
-    FieldInfo,
-    SHAPE_LIST,
-    SHAPE_SEQUENCE,
-    SHAPE_SET,
-    SHAPE_TUPLE,
-    SHAPE_TUPLE_ELLIPSIS,
-)
+from pydantic.fields import FieldInfo
 from pydantic.fields import ModelField
 from pydantic.fields import Required
+from pydantic.fields import SHAPE_LIST
+from pydantic.fields import SHAPE_SEQUENCE
+from pydantic.fields import SHAPE_SET
 from pydantic.fields import SHAPE_SINGLETON
+from pydantic.fields import SHAPE_TUPLE
+from pydantic.fields import SHAPE_TUPLE_ELLIPSIS
 from pydantic.fields import UndefinedType
 from pydantic.schema import get_annotation_from_field_info
 from pydantic.typing import evaluate_forwardref

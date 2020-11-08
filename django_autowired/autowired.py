@@ -1,13 +1,14 @@
-from django_autowired.dependency.models import Dependant
-from typing import Any, List
+import functools
+from typing import Any
 from typing import Callable
 from typing import Dict
+from typing import List
 from typing import Optional
 
-from django.views import View
-import functools
 from django.http.request import HttpRequest
+from django.views import View
 from django_autowired import params
+from django_autowired.dependency.models import Dependant
 
 ViewFunc = Callable
 
