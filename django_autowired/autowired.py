@@ -21,7 +21,7 @@ class ViewRoute(object):
     ) -> None:
         self.view_func = view_func
         self.dependencies = dependencies or []
-        self.dependant = Dependant.new_dependant(call=view_func)
+        self.dependant = Dependant.new_dependant(call=view_func, is_view_func=True)
         for depends in self.dependencies[::-1]:
             self.dependant.dependencies.insert(
                 0,
