@@ -1,4 +1,6 @@
+from django_autowired.utils import BodyConverter
 import functools
+import json
 from typing import Any
 from typing import Callable
 from typing import Dict
@@ -9,6 +11,7 @@ from django.http.request import HttpRequest
 from django.views import View
 from django_autowired import params
 from django_autowired.dependency.models import Dependant
+from django_autowired.typing import BodyType
 
 ViewFunc = Callable
 
@@ -27,6 +30,11 @@ class ViewRoute(object):
                 0,
                 self.dependant.new_paramless_sub_dependant(depends=depends),
             )
+        self.unique_id = str(view_func)
+        self.body_field = self.dependant.get_body_field(name=self.unique_id)
+        self.is_body_form = self.body_field and isinstance(
+            self.body_field.field_info, params.Form
+        )
 
 
 class Autowired(object):
@@ -41,9 +49,10 @@ class Autowired(object):
     ) -> ViewFunc:
         def decorator(func: ViewFunc) -> ViewFunc:
             # TODO
-            self._view_route[func] = ViewRoute(
-                view_func=func, dependencies=dependencies
-            )
+            route = ViewRoute(view_func=func, dependencies=dependencies)
+            self._view_route[func] = route
+            body_field = route.body_field
+            is_body_form = route.is_body_form
 
             def inner(*args, **kwargs) -> Any:
                 """
@@ -61,9 +70,21 @@ class Autowired(object):
                     # function view
                     view_request = args[0]
                     view_args = args[1:]
-                # identify
+                # slove dependency
+                try:
+                    body: Optional[BodyType] = None
+                    if body_field:
+                        if is_body_form:
+                            body = BodyConverter.to_form(request=view_request)
+                        else:
+                            body = BodyConverter.to_json(request=view_request)
+                except json.JSONDecodeError:
+                    raise Exception("body json dencode error")
+                except Exception:
+                    raise Exception("parse body error")
+
                 # inject
-                return view_func(view_request, *view_args, **kwargs)
+                return view_func(view_request, body, *view_args, **kwargs)
 
             return inner
 
