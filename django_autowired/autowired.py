@@ -1,4 +1,3 @@
-from django_autowired.utils import BodyConverter
 import functools
 import json
 from typing import Any
@@ -12,6 +11,7 @@ from django.views import View
 from django_autowired import params
 from django_autowired.dependency.models import Dependant
 from django_autowired.typing import BodyType
+from django_autowired.utils import BodyConverter
 
 ViewFunc = Callable
 
@@ -112,4 +112,3 @@ def func_view(request):
 if __name__ == "__main__":
     v = ClassView()
     v.post(1, a=1, b="1", c="1")
-    # print(v.put)
