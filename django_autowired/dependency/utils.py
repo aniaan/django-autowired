@@ -1,17 +1,24 @@
+from copy import deepcopy
 import functools
 import inspect
 from typing import Any
 from typing import Callable
 from typing import Dict
+from typing import List
 from typing import Optional
 from typing import Type
 from typing import Union
 
+from django.http.request import QueryDict
+from django.utils.datastructures import MultiValueDict
+from django_autowired import params
 from django_autowired.params import Body
 from django_autowired.params import Param
 from pydantic import BaseConfig
 from pydantic import BaseModel
 from pydantic.class_validators import Validator
+from pydantic.error_wrappers import ErrorWrapper
+from pydantic.errors import MissingError
 from pydantic.fields import FieldInfo
 from pydantic.fields import ModelField
 from pydantic.fields import Required
@@ -26,7 +33,6 @@ from pydantic.schema import get_annotation_from_field_info
 from pydantic.typing import evaluate_forwardref
 from pydantic.typing import ForwardRef
 from pydantic.utils import lenient_issubclass
-
 
 SEQUENCE_TYPES = (list, set, tuple)
 SEQUENCE_SHAPES = {
@@ -184,3 +190,57 @@ class DependantUtils(object):
             annotation = ForwardRef(annotation)  # type: ignore
             annotation = evaluate_forwardref(annotation, globalns, globalns)
         return annotation
+
+
+class RequestConverter(object):
+    @classmethod
+    def to_args(
+        cls,
+        param_fields: List[ModelField],
+        param_values: Union[Dict[str, Any], QueryDict, MultiValueDict],
+    ):
+        values: Dict[str, Any] = {}
+        errors = []
+        for field in param_fields:
+            if DependantUtils.is_scalar_sequence_field(field=field) and isinstance(
+                param_values, QueryDict
+            ):
+                value = param_values.getlist(key=field.alias) or field.default
+            else:
+                value = param_values.get(key=field.alias)
+
+            field_info = field.field_info
+
+            assert isinstance(
+                field_info, params.Param
+            ), "Param must be subclasses of Param"
+
+            if value is None:
+                if field.required:
+                    errors.append(
+                        ErrorWrapper(
+                            MissingError(), loc=(field_info.in_.value, field.alias)
+                        )
+                    )
+                else:
+                    values[field.name] = deepcopy(field.default)
+                continue
+
+            validate_value, validate_errors = field.validate(
+                v=value, values=values, loc=(field_info.in_.value, field.alias)
+            )
+
+            if isinstance(validate_errors, ErrorWrapper):
+                errors.append(validate_errors)
+            elif isinstance(validate_errors, list):
+                errors.extend(validate_errors)
+            else:
+                values[field.name] = validate_value
+
+        return values, errors
+
+    @classmethod
+    def to_body(
+        cls,
+    ):
+        pass
