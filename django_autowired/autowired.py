@@ -32,8 +32,8 @@ class ViewRoute(object):
             )
         self.unique_id = str(view_func)
         self.body_field = self.dependant.get_body_field(name=self.unique_id)
-        self.is_body_form = self.body_field and isinstance(
-            self.body_field.field_info, params.Form
+        self.is_body_form = bool(
+            self.body_field and isinstance(self.body_field.field_info, params.Form)
         )
 
 
@@ -65,11 +65,11 @@ class Autowired(object):
                     view_self = args[0]
                     view_func = functools.partial(func, view_self)
                     view_request: HttpRequest = args[1]
-                    view_args = args[2:]
+                    # view_args = args[2:]
                 else:
                     # function view
                     view_request = args[0]
-                    view_args = args[1:]
+                    # view_args = args[1:]
                 # slove dependency
                 try:
                     body: Optional[BodyType] = None
@@ -83,8 +83,22 @@ class Autowired(object):
                 except Exception:
                     raise Exception("parse body error")
 
+                solved_result = dependant.solve_dependencies(
+                    request=view_request,
+                    body=body,
+                    path_kwargs=kwargs,
+                    is_body_form=is_body_form,
+                )
+                values, errors = solved_result
+                if errors:
+                    # design after
+                    raise Exception("validate error")
+
+                assert dependant.call is not None, "dependant.call muse be a function"
+                raw_response = view_func(**values)
+
                 # inject
-                return view_func(view_request, body, *view_args, **kwargs)
+                return raw_response
 
             return inner
 

@@ -10,7 +10,10 @@ from typing import Type
 from django.http.request import HttpRequest
 from django_autowired import params
 from django_autowired.dependency.utils import DependantUtils
+from django_autowired.dependency.utils import RequestConverter
+from django_autowired.typing import BodyType
 from pydantic import create_model
+from pydantic.error_wrappers import ErrorWrapper
 from pydantic.fields import ModelField
 
 
@@ -242,5 +245,66 @@ class Dependant(object):
 
         return final_field
 
-    def solve_dependencies(self, *, request: HttpRequest, path_kwargs: Dict[str, Any]):
-        pass
+    def solve_dependencies(
+        self,
+        *,
+        request: HttpRequest,
+        path_kwargs: Dict[str, Any],
+        body: Optional[BodyType] = None,
+        is_body_form: bool = False,
+    ):
+        values: Dict[str, Any] = {}
+        errors: List[ErrorWrapper] = []
+
+        sub_dependant: Dependant
+
+        for sub_dependant in self.dependencies:
+            sub_dependant.call = cast(Callable, sub_dependant.call)
+            call = sub_dependant.call
+
+            solved_result = sub_dependant.solve_dependencies(
+                request=request, path_kwargs=path_kwargs
+            )
+
+            sub_values, sub_errors = solved_result
+
+            if sub_errors:
+                errors.extend(sub_errors)
+                continue
+
+            value = call(**sub_values)
+
+            if sub_dependant.name is not None:
+                values[sub_dependant.name] = value
+
+        path_values, path_errors = RequestConverter.to_args(
+            param_fields=self.path_params, param_values=path_kwargs
+        )
+        query_values, query_errors = RequestConverter.to_args(
+            param_fields=self.query_params, param_values=request.GET
+        )
+        header_values, header_errors = RequestConverter.to_args(
+            param_fields=self.header_params, param_values=request.headers
+        )
+        cookie_values, cookie_errors = RequestConverter.to_args(
+            param_fields=self.cookie_params, param_values=request.COOKIES
+        )
+
+        values.update(path_values)
+        values.update(query_values)
+        values.update(header_values)
+        values.update(cookie_values)
+
+        errors += path_errors + query_errors + header_errors + cookie_errors
+
+        if self.body_params:
+            body_values, body_errors = RequestConverter.to_body(
+                param_fields=self.body_params, body=body, is_body_form=is_body_form
+            )
+            values.update(body_values)
+            errors.extend(body_errors)
+
+        if self.request_param_name:
+            values[self.request_param_name] = request
+
+        return values, errors

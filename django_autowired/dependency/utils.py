@@ -6,6 +6,7 @@ from typing import Callable
 from typing import Dict
 from typing import List
 from typing import Optional
+from typing import Tuple
 from typing import Type
 from typing import Union
 
@@ -14,6 +15,7 @@ from django.utils.datastructures import MultiValueDict
 from django_autowired import params
 from django_autowired.params import Body
 from django_autowired.params import Param
+from django_autowired.typing import BodyType
 from pydantic import BaseConfig
 from pydantic import BaseModel
 from pydantic.class_validators import Validator
@@ -42,6 +44,11 @@ SEQUENCE_SHAPES = {
     SHAPE_SEQUENCE,
     SHAPE_TUPLE_ELLIPSIS,
 }
+
+
+def get_missing_field_error(loc: Tuple[str, ...]) -> ErrorWrapper:
+    missing_field_error = ErrorWrapper(MissingError(), loc=loc)
+    return missing_field_error
 
 
 class DependantUtils(object):
@@ -198,7 +205,7 @@ class RequestConverter(object):
         cls,
         param_fields: List[ModelField],
         param_values: Union[Dict[str, Any], QueryDict, MultiValueDict],
-    ):
+    ) -> Tuple[Dict[str, Any], List[ErrorWrapper]]:
         values: Dict[str, Any] = {}
         errors = []
         for field in param_fields:
@@ -242,5 +249,59 @@ class RequestConverter(object):
     @classmethod
     def to_body(
         cls,
-    ):
-        pass
+        param_fields: List[ModelField],
+        body: Optional[BodyType],
+        is_body_form: bool = False,
+    ) -> Tuple[Dict[str, Any], List[ErrorWrapper]]:
+        values = {}
+        errors = []
+
+        if param_fields:
+            field = param_fields[0]
+            field_info = field.field_info
+            embed = getattr(field_info, "embed", False)
+            field_alias_omitted = len(param_fields) == 1 and not embed
+
+            if field_alias_omitted:
+                body = {field.alias: body}
+
+            for field in param_fields:
+                field_info = field.field_info
+                loc: Tuple[str, ...]
+                if field_alias_omitted:
+                    loc = ("body",)
+                else:
+                    loc = ("body", field.alias)
+
+                value: Optional[Any] = None
+
+                if body is not None:
+                    if (
+                        field.shape in SEQUENCE_SHAPES or field.type_ in SEQUENCE_TYPES
+                    ) and isinstance(body, MultiValueDict):
+                        value = body.getlist(field.alias)
+                    else:
+                        try:
+                            value = body.get(field.alias)
+                        except AttributeError:
+                            errors.append(get_missing_field_error(loc))
+                            continue
+
+                if not value:
+                    if field.required:
+                        errors.append(get_missing_field_error(loc=loc))
+                    else:
+                        values[field.name] = deepcopy(field.default)
+
+                validate_value, validate_errors = field.validate(
+                    v=value, values=values, loc=loc
+                )
+
+                if isinstance(validate_errors, ErrorWrapper):
+                    errors.append(validate_errors)
+                elif isinstance(errors, list):
+                    errors.extend(validate_errors)
+                else:
+                    values[field.name] = validate_value
+
+        return values, errors
