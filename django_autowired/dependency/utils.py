@@ -214,7 +214,7 @@ class RequestConverter(object):
             ):
                 value = param_values.getlist(key=field.alias) or field.default
             else:
-                value = param_values.get(key=field.alias)
+                value = param_values.get(field.alias)
 
             field_info = field.field_info
 
