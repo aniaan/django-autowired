@@ -29,7 +29,7 @@ class BaseTestCase(TestCase):
 
     def method_json_expect_code(self, method: str, code: int, url: str, data: dict):
         response = getattr(self, method + "_json")(url, data)
+        self.assertEqual(response.status_code, code)
         content = response.content.decode()
         data = json.loads(content)
-        self.assertEqual(response.status_code, code)
         return data
