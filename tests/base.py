@@ -31,5 +31,5 @@ class BaseTestCase(TestCase):
         response = getattr(self, method + "_json")(url, data)
         content = response.content.decode()
         data = json.loads(content)
-        assert response.status_code, code
+        self.assertEqual(response.status_code, code)
         return data

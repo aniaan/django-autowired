@@ -1,19 +1,23 @@
-from typing import Optional
+import http
+from typing import Any
+from typing import Sequence
 
-from django_autowired import status
+from pydantic import create_model
+from pydantic import ValidationError
+from pydantic.error_wrappers import ErrorList
+
+RequestErrorModel = create_model("Request")
 
 
 class APIException(Exception):
-    status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
-    default_detail = "server error"
-
-    def __init__(self, detail: Optional[str] = None) -> None:
+    def __init__(self, status_code: int, detail: str = None) -> None:
         if detail is None:
-            detail = self.default_detail
-
+            detail = http.HTTPStatus(status_code).phrase
+        self.status_code = status_code
         self.detail = detail
 
 
-class ValidationError(APIException):
-    status_code = status.HTTP_400_BAD_REQUEST
-    default_detail = "Invalid input."
+class RequestValidationError(ValidationError):
+    def __init__(self, errors: Sequence[ErrorList], *, body: Any = None) -> None:
+        self.body = body
+        super().__init__(errors, RequestErrorModel)

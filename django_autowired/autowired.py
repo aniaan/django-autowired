@@ -10,8 +10,11 @@ from django.http.request import HttpRequest
 from django.views import View
 from django_autowired import params
 from django_autowired.dependency.models import Dependant
+from django_autowired.exceptions import APIException
+from django_autowired.exceptions import RequestValidationError
 from django_autowired.typing import BodyType
 from django_autowired.utils import BodyConverter
+from pydantic.error_wrappers import ErrorWrapper
 
 ViewFunc = Callable
 
@@ -78,10 +81,12 @@ class Autowired(object):
                             body = BodyConverter.to_form(request=view_request)
                         else:
                             body = BodyConverter.to_json(request=view_request)
-                except json.JSONDecodeError:
-                    raise Exception("body json dencode error")
+                except json.JSONDecodeError as e:
+                    raise RequestValidationError(
+                        [ErrorWrapper(e, ("body", e.pos))], body=e.doc
+                    )
                 except Exception:
-                    raise Exception("parse body error")
+                    raise APIException(detail="parse body error", status_code=422)
 
                 solved_result = dependant.solve_dependencies(
                     request=view_request,
@@ -92,7 +97,7 @@ class Autowired(object):
                 values, errors = solved_result
                 if errors:
                     # design after
-                    raise Exception("validate error")
+                    raise RequestValidationError(errors, body=body)
 
                 assert dependant.call is not None, "dependant.call muse be a function"
                 raw_response = view_func(**values)
