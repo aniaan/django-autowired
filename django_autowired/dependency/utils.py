@@ -66,6 +66,7 @@ class DependantUtils(object):
         if isinstance(default_value, FieldInfo):
             had_schema = True
             field_info = default_value
+            default_value = field_info.default
             if (
                 isinstance(field_info, Param)
                 and getattr(field_info, "in_", None) is None
@@ -229,9 +230,10 @@ class RequestConverter(object):
                             MissingError(), loc=(field_info.in_.value, field.alias)
                         )
                     )
+                    continue
                 else:
-                    values[field.name] = deepcopy(field.default)
-                continue
+                    # values[field.name] = deepcopy(field.default)
+                    value = deepcopy(field.default)
 
             validate_value, validate_errors = field.validate(
                 v=value, values=values, loc=(field_info.in_.value, field.alias)
@@ -299,7 +301,7 @@ class RequestConverter(object):
 
                 if isinstance(validate_errors, ErrorWrapper):
                     errors.append(validate_errors)
-                elif isinstance(errors, list):
+                elif isinstance(validate_errors, list):
                     errors.extend(validate_errors)
                 else:
                     values[field.name] = validate_value
