@@ -301,7 +301,7 @@ class RequestConverter(object):
 
                 if isinstance(validate_errors, ErrorWrapper):
                     errors.append(validate_errors)
-                elif isinstance(errors, list):
+                elif isinstance(validate_errors, list):
                     errors.extend(validate_errors)
                 else:
                     values[field.name] = validate_value

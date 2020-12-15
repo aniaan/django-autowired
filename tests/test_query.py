@@ -17,7 +17,7 @@ class ClassQueryView(View):
         self,
         request: HttpRequest,
         name: str,
-        id: int = Path(gt=20),
+        id: int = Path(..., gt=20),
         limit: Optional[int] = 100,
         page: Optional[int] = Query(default=11, ge=10, le=20),
     ):
@@ -28,7 +28,7 @@ class ClassQueryView(View):
 def func_query_view(
     request: HttpRequest,
     name: str,
-    id: int = Path(gt=30, le=40),
+    id: int = Path(..., gt=30, le=40),
     limit: Optional[int] = 100,
     page: Optional[int] = Query(default=11, ge=10, le=20),
 ):

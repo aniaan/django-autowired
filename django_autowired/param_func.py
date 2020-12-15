@@ -6,8 +6,8 @@ from django_autowired import params
 
 
 def Path(  # noqa: N802
+    default: Any,
     *,
-    default: Any = None,
     alias: Optional[str] = None,
     title: Optional[str] = None,
     description: Optional[str] = None,
@@ -39,8 +39,8 @@ def Path(  # noqa: N802
 
 
 def Query(  # noqa: N802
+    default: Any,
     *,
-    default: Any = None,
     alias: Optional[str] = None,
     title: Optional[str] = None,
     description: Optional[str] = None,
@@ -72,8 +72,8 @@ def Query(  # noqa: N802
 
 
 def Header(  # noqa: N802
+    default: Any,
     *,
-    default: Any = None,
     alias: Optional[str] = None,
     convert_underscores: bool = True,
     title: Optional[str] = None,
@@ -107,8 +107,8 @@ def Header(  # noqa: N802
 
 
 def Cookie(  # noqa: N802
+    default: Any,
     *,
-    default: Any = None,
     alias: Optional[str] = None,
     title: Optional[str] = None,
     description: Optional[str] = None,
@@ -140,8 +140,8 @@ def Cookie(  # noqa: N802
 
 
 def Body(  # noqa: N802
+    default: Any,
     *,
-    default: Any = None,
     embed: bool = False,
     media_type: str = "application/json",
     alias: Optional[str] = None,
@@ -175,8 +175,8 @@ def Body(  # noqa: N802
 
 
 def Form(  # noqa: N802
+    default: Any,
     *,
-    default: Any = None,
     media_type: str = "application/x-www-form-urlencoded",
     alias: Optional[str] = None,
     title: Optional[str] = None,
@@ -208,8 +208,8 @@ def Form(  # noqa: N802
 
 
 def File(  # noqa: N802
+    default: Any,
     *,
-    default: Any = None,
     media_type: str = "multipart/form-data",
     alias: Optional[str] = None,
     title: Optional[str] = None,

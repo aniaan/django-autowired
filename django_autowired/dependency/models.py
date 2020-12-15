@@ -78,7 +78,7 @@ class Dependant(object):
             )
 
     def _add_body_field(self, param_field: ModelField) -> None:
-        if isinstance(param_field.field_info, params.Body):
+        if not isinstance(param_field.field_info, params.Body):
             raise Exception(
                 f"Param: {param_field.name} can only be a request body, using Body(...)"
             )
@@ -133,7 +133,6 @@ class Dependant(object):
                 sub_dependant = dependant.new_param_sub_dependant(param=param)
                 dependant.dependencies.append(sub_dependant)
                 continue
-
             if dependant.add_special_param_field(param=param):
                 continue
 

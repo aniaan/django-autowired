@@ -13,8 +13,8 @@ class ClassPathView(View):
     def get(
         self,
         request: HttpRequest,
-        id: int = Path(gt=20),
-        name: str = Path(min_length=2, max_length=3),
+        id: int = Path(..., gt=20),
+        name: str = Path(..., min_length=2, max_length=3),
     ):
         return JsonResponse(data={"id": id, "name": name})
 
@@ -22,8 +22,8 @@ class ClassPathView(View):
 @autowired(description="this is func-path view")
 def func_path_view(
     request: HttpRequest,
-    id: int = Path(gt=30, le=40),
-    name: str = Path(min_length=2, max_length=3),
+    id: int = Path(..., gt=30, le=40),
+    name: str = Path(..., min_length=2, max_length=3),
 ):
     return JsonResponse(data={"id": id, "name": name})
 
