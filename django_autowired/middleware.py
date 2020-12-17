@@ -10,13 +10,11 @@ from django_autowired.exceptions import RequestValidationError
 
 class AutoWiredExceptionMiddleware(MiddlewareMixin):
     def process_exception(
-        self, request: HttpRequest, exception: Exception
+        self, request: HttpRequest, exc: Exception
     ) -> Optional[HttpResponse]:
-        if isinstance(exception, APIException):
-            return JsonResponse(
-                status=exception.status_code, data={"detail": exception.detail}
-            )
-        elif isinstance(exception, RequestValidationError):
-            return JsonResponse(status=400, data={"detail": "validate params error"})
+        if isinstance(exc, APIException):
+            return JsonResponse(status=exc.status_code, data={"detail": exc.detail})
+        elif isinstance(exc, RequestValidationError):
+            return JsonResponse(status=400, data={"detail": str(exc)})
         else:
-            raise exception
+            raise exc
