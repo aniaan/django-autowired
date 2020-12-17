@@ -1,4 +1,5 @@
 import json
+from typing import Any
 from typing import Dict
 from typing import Optional
 from urllib.parse import urlencode
@@ -41,7 +42,7 @@ class BaseTestCase(TestCase):
         method: str,
         code: int,
         url: str,
-        data: dict,
+        data: Any,
         query_params: Optional[Dict] = None,
     ):
         response = getattr(self, method + "_json")(url, data, query_params=query_params)

@@ -257,7 +257,6 @@ class RequestConverter(object):
     ) -> Tuple[Dict[str, Any], List[ErrorWrapper]]:
         values = {}
         errors = []
-
         if param_fields:
             field = param_fields[0]
             field_info = field.field_info

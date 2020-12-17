@@ -1,3 +1,4 @@
+from typing import List
 from typing import Optional
 
 from django.http.request import HttpRequest
@@ -24,6 +25,20 @@ class ClassQueryView(View):
         return JsonResponse(data={"id": id, "name": name, "limit": limit, "page": page})
 
 
+class AliasQueryView(View):
+    @autowired(description="this is alias-query view")
+    def get(
+        self, request: HttpRequest, q: Optional[str] = Query(None, alias="item-query")
+    ):
+        return JsonResponse(data={"q": q})
+
+
+class MultiValueQueryView(View):
+    @autowired(description="this is multi-value-query view")
+    def get(self, request: HttpRequest, q: Optional[List[str]] = Query(["one", "two"])):
+        return JsonResponse(data={"q": q})
+
+
 @autowired(description="this is func-query view")
 def func_query_view(
     request: HttpRequest,
@@ -38,6 +53,8 @@ def func_query_view(
 urlpatterns = [
     path(route="class-query/<int:id>/", view=ClassQueryView.as_view()),
     path(route="func-query/<int:id>/", view=func_query_view),
+    path(route="alias-query/", view=AliasQueryView.as_view()),
+    path(route="multi-value-query/", view=MultiValueQueryView.as_view()),
 ]
 
 
@@ -127,3 +144,49 @@ class TestFuncPathView(BaseTestCase):
         self.method_json_expect_code(
             method=self.GET, code=400, url="/func-query/21/", data={}
         )
+
+
+@override_settings(ROOT_URLCONF="tests.test_query")
+class TestAliasQueryView(BaseTestCase):
+    def test_success(self):
+        data = self.method_json_expect_code(
+            method=self.GET,
+            code=200,
+            url="/alias-query/",
+            data={
+                "item-query": "bea",
+            },
+        )
+        assert data["q"] == "bea"
+
+    def test_success1(self):
+        data = self.method_json_expect_code(
+            method=self.GET,
+            code=200,
+            url="/alias-query/",
+            data={},
+        )
+        assert data["q"] is None
+
+
+@override_settings(ROOT_URLCONF="tests.test_query")
+class TestMultiValueQueryView(BaseTestCase):
+    def test_success(self):
+        data = self.method_json_expect_code(
+            method=self.GET,
+            code=200,
+            url="/multi-value-query/",
+            data={
+                "q": ["a", "b"],
+            },
+        )
+        self.assertListEqual(["a", "b"], data["q"])
+
+    def test_default(self):
+        data = self.method_json_expect_code(
+            method=self.GET,
+            code=200,
+            url="/multi-value-query/",
+            data={},
+        )
+        self.assertListEqual(["one", "two"], data["q"])
