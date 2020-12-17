@@ -83,7 +83,7 @@ class Autowired(object):
                             body = BodyConverter.to_json(request=view_request)
                 except json.JSONDecodeError as e:
                     raise RequestValidationError(
-                        [ErrorWrapper(e, ("body", e.pos))], body=e.doc
+                        [ErrorWrapper(exc=e, loc=("body", e.pos))], body=e.doc
                     )
                 except Exception:
                     raise APIException(detail="parse body error", status_code=422)
@@ -97,7 +97,7 @@ class Autowired(object):
                 values, errors = solved_result
                 if errors:
                     # design after
-                    raise RequestValidationError(errors, body=body)
+                    raise RequestValidationError(errors=errors, body=body)
 
                 assert dependant.call is not None, "dependant.call muse be a function"
                 raw_response = view_func(**values)
