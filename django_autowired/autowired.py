@@ -76,6 +76,7 @@ class Autowired(object):
                 # slove dependency
                 try:
                     body: Optional[BodyType] = None
+
                     if body_field:
                         if is_body_form:
                             body = BodyConverter.to_form(request=view_request)

@@ -13,13 +13,23 @@ class BaseTestCase(TestCase):
     GET = "get"
     DELETE = "delete"
 
-    def post_json(self, url, data, query_params: Optional[Dict] = None, **kwargs):
+    def post_json(
+        self,
+        url,
+        data,
+        query_params: Optional[Dict] = None,
+        content_type: Optional[str] = "application/json",
+        **kwargs
+    ):
         extra = {}
         if query_params:
             extra["QUERY_STRING"] = urlencode(query_params, doseq=True)
-        return self.client.post(
-            url, data=json.dumps(data), content_type="application/json", **extra
-        )
+
+        if content_type == "application/json":
+            data = json.dumps(data)
+            extra["content_type"] = content_type
+
+        return self.client.post(url, data=data, **extra)
 
     def put_json(self, url, data, query_params: Optional[Dict] = None, **kwargs):
         extra = {}
@@ -44,8 +54,11 @@ class BaseTestCase(TestCase):
         url: str,
         data: Any,
         query_params: Optional[Dict] = None,
+        **kwargs
     ):
-        response = getattr(self, method + "_json")(url, data, query_params=query_params)
+        response = getattr(self, method + "_json")(
+            url, data, query_params=query_params, **kwargs
+        )
         self.assertEqual(response.status_code, code)
         content = response.content.decode()
         data = json.loads(content)
