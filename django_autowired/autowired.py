@@ -5,8 +5,11 @@ from typing import Callable
 from typing import Dict
 from typing import List
 from typing import Optional
+from typing import Type
 
 from django.http.request import HttpRequest
+from django.http.response import HttpResponse
+from django.http.response import JsonResponse
 from django.views import View
 from django_autowired import params
 from django_autowired.dependency.models import Dependant
@@ -24,6 +27,8 @@ class ViewRoute(object):
         self,
         view_func: ViewFunc,
         dependencies: Optional[List[params.Depends]] = None,
+        response_model: Optional[Type[Any]] = None,
+        response_class: Optional[Type[HttpResponse]] = None,
     ) -> None:
         self.view_func = view_func
         self.dependencies = dependencies or []
@@ -38,6 +43,8 @@ class ViewRoute(object):
         self.is_body_form = bool(
             self.body_field and isinstance(self.body_field.field_info, params.Form)
         )
+        self.response_model = response_model
+        self.response_class = response_class or JsonResponse
 
 
 class Autowired(object):
@@ -49,6 +56,8 @@ class Autowired(object):
         self,
         description: Optional[str] = None,
         dependencies: Optional[List[params.Depends]] = None,
+        response_model: Optional[Type[Any]] = None,
+        response_class: Optional[Type[HttpResponse]] = None,
     ) -> ViewFunc:
         def decorator(func: ViewFunc) -> ViewFunc:
             # TODO
@@ -100,8 +109,10 @@ class Autowired(object):
                     # design after
                     raise RequestValidationError(errors=errors, body=body)
 
-                assert dependant.call is not None, "dependant.call muse be a function"
                 raw_response = view_func(**values)
+
+                if isinstance(raw_response, HttpResponse):
+                    return raw_response
 
                 # inject
                 return raw_response
