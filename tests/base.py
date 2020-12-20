@@ -29,23 +29,27 @@ class BaseTestCase(TestCase):
             data = json.dumps(data)
             extra["content_type"] = content_type
 
-        return self.client.post(url, data=data, **extra)
+        return self.client.post(url, data=data, **extra, **kwargs)
 
     def put_json(self, url, data, query_params: Optional[Dict] = None, **kwargs):
         extra = {}
         if query_params:
             extra["QUERY_STRING"] = urlencode(query_params, doseq=True)
         return self.client.put(
-            url, data=json.dumps(data), content_type="application/json", **extra
+            url,
+            data=json.dumps(data),
+            content_type="application/json",
+            **extra,
+            **kwargs
         )
 
     def delete_json(self, url, data, **kwargs):
         return self.client.delete(
-            url, data=json.dumps(data), content_type="application/json"
+            url, data=json.dumps(data), content_type="application/json", **kwargs
         )
 
     def get_json(self, url, data, **kwargs):
-        return self.client.get(url, data)
+        return self.client.get(url, data, **kwargs)
 
     def method_json_expect_code(
         self,
