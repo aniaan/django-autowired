@@ -1,8 +1,10 @@
-from django.utils.datastructures import MultiValueDict
-from django_autowired.typing import JSON, ViewFunc
 import inspect
-from django.http.request import HttpRequest
 import json
+
+from django.http.request import HttpRequest
+from django.utils.datastructures import MultiValueDict
+from django_autowired.typing import JSON
+from django_autowired.typing import ViewFunc
 
 
 def get_view_name(view_func: ViewFunc) -> str:

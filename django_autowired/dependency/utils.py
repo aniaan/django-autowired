@@ -1,8 +1,10 @@
 from copy import deepcopy
+from dataclasses import is_dataclass
 import functools
 import inspect
 from typing import Any
 from typing import Callable
+from typing import cast
 from typing import Dict
 from typing import List
 from typing import Optional
@@ -18,6 +20,7 @@ from django_autowired.params import Param
 from django_autowired.typing import BodyType
 from pydantic import BaseConfig
 from pydantic import BaseModel
+from pydantic import create_model
 from pydantic.class_validators import Validator
 from pydantic.error_wrappers import ErrorWrapper
 from pydantic.errors import MissingError
@@ -169,6 +172,57 @@ class DependantUtils(object):
                 "Invalid args for response field!"
                 f"Hint: check that {type_} is a valid pydantic field type"
             )
+
+    @classmethod
+    def create_cloned_field(
+        cls,
+        field: ModelField,
+        *,
+        cloned_types: Optional[Dict[Type[BaseModel], Type[BaseModel]]] = None,
+    ):
+        if cloned_types is None:
+            cloned_types = dict()
+        original_type = field.type_
+        if is_dataclass(original_type) and hasattr(original_type, "__pydantic_model__"):
+            original_type = original_type.__pydantic_model__  # type: ignore
+        use_type = original_type
+        if lenient_issubclass(original_type, BaseModel):
+            original_type = cast(Type[BaseModel], original_type)
+            use_type = cloned_types.get(original_type)
+            if use_type is None:
+                use_type = create_model(original_type.__name__, __base__=original_type)
+                cloned_types[original_type] = use_type
+                for f in original_type.__fields__.values():
+                    use_type.__fields__[f.name] = cls.create_cloned_field(
+                        f, cloned_types=cloned_types
+                    )
+        new_field = cls.create_model_field(name=field.name, type_=use_type)
+        new_field.has_alias = field.has_alias
+        new_field.alias = field.alias
+        new_field.class_validators = field.class_validators
+        new_field.default = field.default
+        new_field.required = field.required
+        new_field.model_config = field.model_config
+        new_field.field_info = field.field_info
+        new_field.allow_none = field.allow_none
+        new_field.validate_always = field.validate_always
+        if field.sub_fields:
+            new_field.sub_fields = [
+                cls.create_cloned_field(sub_field, cloned_types=cloned_types)
+                for sub_field in field.sub_fields
+            ]
+        if field.key_field:
+            new_field.key_field = cls.create_cloned_field(
+                field.key_field, cloned_types=cloned_types
+            )
+        new_field.validators = field.validators
+        new_field.pre_validators = field.pre_validators
+        new_field.post_validators = field.post_validators
+        new_field.parse_json = field.parse_json
+        new_field.shape = field.shape
+        new_field.populate_validators()
+
+        return new_field
 
     @classmethod
     def get_typed_signature(cls, call: Callable) -> inspect.Signature:
