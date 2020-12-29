@@ -19,6 +19,8 @@ from django_autowired.exceptions import APIException
 from django_autowired.exceptions import RequestValidationError
 from django_autowired.typing import BodyType
 from django_autowired.utils import BodyConverter
+from django_autowired.openapi.docs import get_swagger_ui_html
+from django_autowired.openapi.utils import get_openapi
 from pydantic import BaseModel
 from pydantic import ValidationError
 from pydantic.error_wrappers import ErrorWrapper
@@ -108,6 +110,13 @@ class ViewRoute(object):
         response_model_include: Optional[Set[str]] = None,
         response_model_exclude: Optional[Set[str]] = None,
         response_model_by_alias: bool = True,
+        include_in_schema: bool = True,
+        tags: Optional[List[str]] = None,
+        deprecated: Optional[bool] = None,
+        summary: Optional[str] = None,
+        description: Optional[str] = None,
+        response_description: str = "Successful Response",
+        name: Optional[str] = None,
     ) -> None:
         self._view_func = view_func
         self._dependencies = dependencies or []
@@ -139,6 +148,19 @@ class ViewRoute(object):
 
         self._status_code = status_code
 
+        self.tags: List[str] = tags or []
+        self.deprecated = deprecated
+        self.include_in_schema = include_in_schema
+        self.summary = summary
+        self.description = description
+        self.response_description = response_description
+        self.name = name
+
+        # todo: path
+        self.path = 'test'
+        # func_view?
+        self.methods = self._view_func.__name__
+
     @property
     def dependant(self) -> Dependant:
         return self._dependant
@@ -163,7 +185,66 @@ class ViewRoute(object):
 class Autowired(object):
     def __init__(self) -> None:
         # TODO
+
         self._view_route: Dict[ViewFunc, ViewRoute] = {}
+
+
+    def setup_schema(
+        self,
+        title: str = "test",
+        description: str = "111",
+        version: str = "0.1.0",
+        ):
+        self.title = title
+        self.description = description
+        self.version = version
+        self.openapi_version = "3.0.2"
+        self.openapi_url = '/openapi.json'
+
+        assert self.title, "A title must be provided for OpenAPI, e.g.: 'My API'"
+        assert self.version, "A version must be provided for OpenAPI, e.g.: '2.1.0'"
+
+        self.openapi_schema: Optional[Dict[str, Any]] = None
+        self.setup()
+
+    def setup(self):
+        self.setup_openapi_view()
+        self.setup_swagger_ui_view()
+
+    def get_openapi_view(self) -> ViewFunc:
+        return self.openapi_view
+
+    def get_swagger_ui_view(self) -> ViewFunc:
+        return self.swagger_view
+
+    def openapi(self) -> Dict:
+        if not self.openapi_schema:
+            routes = [v for k, v in self._view_route.items()]
+            print('routes', routes)
+            self.openapi_schema = get_openapi(
+                title=self.title,
+                version=self.version,
+                openapi_version=self.openapi_version,
+                description=self.description,
+                routes=routes,
+            )
+        return self.openapi_schema
+
+    def setup_openapi_view(self) -> None:
+        func = self.openapi
+        def openapiView(request):
+            return JsonResponse(func())
+        self.openapi_view = openapiView
+
+    def setup_swagger_ui_view(self) -> None:
+        openapi_url = self.openapi_url
+        title = self.title + " - Swagger UI"
+        def swaggerView(request):
+            return get_swagger_ui_html(
+                    openapi_url=openapi_url,
+                    title=title,
+                )
+        self.swagger_view = swaggerView
 
     def __call__(
         self,
@@ -175,6 +256,12 @@ class Autowired(object):
         response_model_include: Optional[Set[str]] = None,
         response_model_exclude: Optional[Set[str]] = None,
         response_model_by_alias: bool = True,
+        include_in_schema: bool = True,
+        tags: Optional[List[str]] = None,
+        deprecated: Optional[bool] = None,
+        summary: Optional[str] = None,
+        response_description: str = "Successful Response",
+        name: Optional[str] = None,
     ) -> ViewFunc:
         def decorator(func: ViewFunc) -> ViewFunc:
             # TODO
@@ -187,6 +274,12 @@ class Autowired(object):
                 response_model_include=response_model_include,
                 response_model_exclude=response_model_exclude,
                 response_model_by_alias=response_model_by_alias,
+                include_in_schema=include_in_schema,
+                tags=tags,
+                deprecated=deprecated,
+                summary=summary,
+                response_description=response_description,
+                name=name,
             )
             self._view_route[func] = route
             body_field = route.body_field

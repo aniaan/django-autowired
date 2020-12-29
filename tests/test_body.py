@@ -26,13 +26,13 @@ class Item(BaseModel):
 class ClassBodyView(View):
     @autowired(description="this is class-body view")
     def post(
-        self,
-        request: HttpRequest,
-        name: str,
-        item: Item,
-        id: int = Path(..., gt=20),
-        limit: Optional[int] = 100,
-        page: Optional[int] = Query(default=11, ge=10, le=20),
+            self,
+            request: HttpRequest,
+            name: str,
+            item: Item,
+            id: int = Path(..., gt=20),
+            limit: Optional[int] = 100,
+            page: Optional[int] = Query(default=11, ge=10, le=20),
     ):
         return JsonResponse(
             data={
@@ -65,11 +65,28 @@ class MultiFieldBodyView(View):
         )
 
 
+autowired.setup_schema()
 urlpatterns = [
+    path(route="openapi.json", view=autowired.get_openapi_view()),
+    path(route="swagger", view=autowired.get_swagger_ui_view()),
     path(route="class-body/<int:id>/", view=ClassBodyView.as_view()),
     path(route="embed-body/", view=EmbedBodyView.as_view()),
     path(route="multi-field-body/", view=MultiFieldBodyView.as_view()),
 ]
+
+
+@override_settings(ROOT_URLCONF="tests.test_body")
+class TestOpenapiSchema(BaseTestCase):
+    def test_open_api(self):
+        response = self.get_json(url='/openapi.json', data=None)
+        print(response.json())
+
+
+@override_settings(ROOT_URLCONF="tests.test_body")
+class TestSwaggerSchema(BaseTestCase):
+    def test_open_api(self):
+        response = self.client.get('/swagger')
+        print(response.content)
 
 
 @override_settings(ROOT_URLCONF="tests.test_body")
