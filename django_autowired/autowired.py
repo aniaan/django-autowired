@@ -13,14 +13,13 @@ from django.http.response import HttpResponse
 from django.http.response import JsonResponse
 from django.views import View
 from django_autowired import params
-from django_autowired.dependency.models import Dependant
-from django_autowired.dependency.utils import DependantUtils
+from django_autowired.route import ViewRoute
 from django_autowired.exceptions import APIException
 from django_autowired.exceptions import RequestValidationError
 from django_autowired.typing import BodyType
 from django_autowired.utils import BodyConverter
 from django_autowired.openapi.docs import get_swagger_ui_html
-from django_autowired.openapi.utils import get_openapi
+from django_autowired.openapi.utils import OpenAPISchemaGenerator
 from pydantic import BaseModel
 from pydantic import ValidationError
 from pydantic.error_wrappers import ErrorWrapper
@@ -30,11 +29,11 @@ ViewFunc = Callable
 
 
 def _prepare_response_content(
-    content: Any,
-    *,
-    exclude_unset: bool = False,
-    exclude_defaults: bool = False,
-    exclude_none: bool = False,
+        content: Any,
+        *,
+        exclude_unset: bool = False,
+        exclude_defaults: bool = False,
+        exclude_none: bool = False,
 ) -> Any:
     if isinstance(content, BaseModel):
         return content.dict(
@@ -67,12 +66,12 @@ def _prepare_response_content(
 
 
 def serialize_response(
-    *,
-    response_content: Any,
-    field: Optional[ModelField] = None,
-    include: Optional[Set[str]] = None,
-    exclude: Optional[Set[str]] = None,
-    by_alias: bool = True,
+        *,
+        response_content: Any,
+        field: Optional[ModelField] = None,
+        include: Optional[Set[str]] = None,
+        exclude: Optional[Set[str]] = None,
+        by_alias: bool = True,
 ) -> Any:
     if field:
         errors = []
@@ -99,102 +98,17 @@ def serialize_response(
         return response_content
 
 
-class ViewRoute(object):
-    def __init__(
-        self,
-        view_func: ViewFunc,
-        status_code: int = 200,
-        dependencies: Optional[List[params.Depends]] = None,
-        response_model: Optional[Type[Any]] = None,
-        response_class: Optional[Type[HttpResponse]] = None,
-        response_model_include: Optional[Set[str]] = None,
-        response_model_exclude: Optional[Set[str]] = None,
-        response_model_by_alias: bool = True,
-        include_in_schema: bool = True,
-        tags: Optional[List[str]] = None,
-        deprecated: Optional[bool] = None,
-        summary: Optional[str] = None,
-        description: Optional[str] = None,
-        response_description: str = "Successful Response",
-        name: Optional[str] = None,
-    ) -> None:
-        self._view_func = view_func
-        self._dependencies = dependencies or []
-        self._dependant = Dependant.new_dependant(call=view_func, is_view_func=True)
-        for depends in self._dependencies[::-1]:
-            self._dependant.dependencies.insert(
-                0,
-                self._dependant.new_paramless_sub_dependant(depends=depends),
-            )
-        self._unique_id = str(view_func)
-        self._body_field = self._dependant.get_body_field(name=self._unique_id)
-        self._is_body_form = bool(
-            self._body_field and isinstance(self._body_field.field_info, params.Form)
-        )
-        self._response_model = response_model
-        self._response_class = response_class or JsonResponse
-
-        if self._response_model:
-            response_name = "Response_" + self._unique_id
-            self._response_field = DependantUtils.create_model_field(
-                name=response_name, type_=self._response_model
-            )
-            self._cloned_response_field = DependantUtils.create_cloned_field(
-                field=self._response_field,
-            )
-        else:
-            self._response_field = None
-            self._cloned_response_field = None
-
-        self._status_code = status_code
-
-        self.tags: List[str] = tags or []
-        self.deprecated = deprecated
-        self.include_in_schema = include_in_schema
-        self.summary = summary
-        self.description = description
-        self.response_description = response_description
-        self.name = name
-
-        # todo: path
-        self.path = 'test'
-        # func_view?
-        self.methods = self._view_func.__name__
-
-    @property
-    def dependant(self) -> Dependant:
-        return self._dependant
-
-    @property
-    def is_body_form(self) -> bool:
-        return self._is_body_form
-
-    @property
-    def body_field(self) -> Optional[ModelField]:
-        return self._body_field
-
-    @property
-    def response_field(self) -> Optional[ModelField]:
-        return self._cloned_response_field
-
-    @property
-    def status_code(self) -> int:
-        return self._status_code
-
-
 class Autowired(object):
     def __init__(self) -> None:
         # TODO
-
         self._view_route: Dict[ViewFunc, ViewRoute] = {}
 
-
     def setup_schema(
-        self,
-        title: str = "test",
-        description: str = "111",
-        version: str = "0.1.0",
-        ):
+            self,
+            title: str = "test",
+            description: str = "111",
+            version: str = "0.1.0",
+    ):
         self.title = title
         self.description = description
         self.version = version
@@ -221,47 +135,52 @@ class Autowired(object):
         if not self.openapi_schema:
             routes = [v for k, v in self._view_route.items()]
             print('routes', routes)
-            self.openapi_schema = get_openapi(
+            generator = OpenAPISchemaGenerator(
                 title=self.title,
                 version=self.version,
                 openapi_version=self.openapi_version,
                 description=self.description,
                 routes=routes,
             )
+            self.openapi_schema = generator.get_schema()
         return self.openapi_schema
 
     def setup_openapi_view(self) -> None:
         func = self.openapi
+
         def openapiView(request):
             return JsonResponse(func())
+
         self.openapi_view = openapiView
 
     def setup_swagger_ui_view(self) -> None:
         openapi_url = self.openapi_url
         title = self.title + " - Swagger UI"
+
         def swaggerView(request):
             return get_swagger_ui_html(
-                    openapi_url=openapi_url,
-                    title=title,
-                )
+                openapi_url=openapi_url,
+                title=title,
+            )
+
         self.swagger_view = swaggerView
 
     def __call__(
-        self,
-        description: Optional[str] = None,
-        dependencies: Optional[List[params.Depends]] = None,
-        status_code: int = 200,
-        response_model: Optional[Type[Any]] = None,
-        response_class: Type[HttpResponse] = JsonResponse,
-        response_model_include: Optional[Set[str]] = None,
-        response_model_exclude: Optional[Set[str]] = None,
-        response_model_by_alias: bool = True,
-        include_in_schema: bool = True,
-        tags: Optional[List[str]] = None,
-        deprecated: Optional[bool] = None,
-        summary: Optional[str] = None,
-        response_description: str = "Successful Response",
-        name: Optional[str] = None,
+            self,
+            description: Optional[str] = None,
+            dependencies: Optional[List[params.Depends]] = None,
+            status_code: int = 200,
+            response_model: Optional[Type[Any]] = None,
+            response_class: Type[HttpResponse] = JsonResponse,
+            response_model_include: Optional[Set[str]] = None,
+            response_model_exclude: Optional[Set[str]] = None,
+            response_model_by_alias: bool = True,
+            include_in_schema: bool = True,
+            tags: Optional[List[str]] = None,
+            deprecated: Optional[bool] = None,
+            summary: Optional[str] = None,
+            response_description: str = "Successful Response",
+            name: Optional[str] = None,
     ) -> ViewFunc:
         def decorator(func: ViewFunc) -> ViewFunc:
             # TODO

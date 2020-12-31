@@ -1,35 +1,36 @@
-import http.client
-from enum import Enum
-from typing import Any, Dict, List, Optional, Sequence, Set, Tuple, Type, Union, cast
+import re
 
-# from fastapi import routing
-# from fastapi.datastructures import DefaultPlaceholder
-# from fastapi.dependencies.models import Dependant
-# from fastapi.dependencies.utils import get_flat_dependant, get_flat_params
-# from fastapi.encoders import jsonable_encoder
-# from fastapi.openapi.constants import (
-#     METHODS_WITH_BODY,
-#     REF_PREFIX,
-#     STATUS_CODES_WITH_NO_BODY,
-# )
-# from fastapi.openapi.models import OpenAPI
-# from fastapi.params import Body, Param
-# from fastapi.utils import (
-#     deep_dict_update,
-#     generate_operation_id_for_path,
-#     get_model_definitions,
-# )
-# from pydantic import BaseModel
+from collections import defaultdict
+from enum import Enum
+from types import GeneratorType
+from typing import Any
+from typing import Callable
+from typing import Sequence
+from typing import Set
+from typing import Dict
+from typing import List
+from typing import Optional
+from typing import Type
+from typing import cast
+from typing import Tuple
+from typing import Union
+from pathlib import PurePath
+from pydantic import BaseModel
 from pydantic.fields import ModelField
-from pydantic.schema import (
-    field_schema,
-    get_flat_models_from_fields,
-    get_model_name_map,
-)
+from pydantic.schema import field_schema
+from pydantic.schema import get_flat_models_from_fields
+from pydantic.schema import model_process_schema
+from pydantic.schema import get_model_name_map
 from pydantic.utils import lenient_issubclass
-# from starlette.responses import JSONResponse
-# from starlette.routing import BaseRoute
-# from starlette.status import HTTP_422_UNPROCESSABLE_ENTITY
+from pydantic.json import ENCODERS_BY_TYPE
+
+from django_autowired.params import Param
+from django_autowired.params import Body
+from django_autowired.route import ViewRoute
+from django_autowired.status import HTTP_422_UNPROCESSABLE_ENTITY
+from django_autowired.openapi.constants import REF_PREFIX
+from django_autowired.openapi.constants import METHODS_WITH_BODY
+from django_autowired.openapi.models import OpenAPI
 
 validation_error_definition = {
     "title": "ValidationError",
@@ -49,7 +50,7 @@ validation_error_response_definition = {
         "detail": {
             "title": "Detail",
             "type": "array",
-            # "items": {"$ref": REF_PREFIX + "ValidationError"},
+            "items": {"$ref": REF_PREFIX + "ValidationError"},
         }
     },
 }
@@ -63,52 +64,421 @@ status_code_ranges: Dict[str, str] = {
     "DEFAULT": "Default Response",
 }
 
+SetIntStr = Set[Union[int, str]]
+DictIntStrAny = Dict[Union[int, str], Any]
+
+
+def get_flat_models_from_routes(
+        routes: Sequence[Callable],
+) -> Set[Union[Type[BaseModel], Type[Enum]]]:
+    body_fields_from_routes: List[ModelField] = []
+    responses_from_routes: List[ModelField] = []
+    request_fields_from_routes: List[ModelField] = []
+    for route in routes:
+        if getattr(route, "include_in_schema", None) and isinstance(
+                route, ViewRoute
+        ):
+            if route.body_field:
+                assert isinstance(
+                    route.body_field, ModelField
+                ), "A request body must be a Pydantic Field"
+                body_fields_from_routes.append(route.body_field)
+            if route.response_field:
+                responses_from_routes.append(route.response_field)
+            params = route.dependant.get_flat_params()
+            request_fields_from_routes.extend(params)
+
+    flat_models = get_flat_models_from_fields(
+        body_fields_from_routes + responses_from_routes + request_fields_from_routes,
+        known_models=set(),
+    )
+    return flat_models
+
+
+def get_model_definitions(
+        *,
+        flat_models: Set[Union[Type[BaseModel], Type[Enum]]],
+        model_name_map: Dict[Union[Type[BaseModel], Type[Enum]], str],
+) -> Dict[str, Any]:
+    definitions: Dict[str, Dict] = {}
+    for model in flat_models:
+        # ignore mypy error until enum schemas are released
+        m_schema, m_definitions, m_nested_models = model_process_schema(
+            model, model_name_map=model_name_map, ref_prefix=REF_PREFIX  # type: ignore
+        )
+        definitions.update(m_definitions)
+        model_name = model_name_map[model]
+        definitions[model_name] = m_schema
+    return definitions
+
+
+def generate_operation_id_for_path(*, name: str, path: str, method: str) -> str:
+    operation_id = name + path
+    operation_id = re.sub("[^0-9a-zA-Z_]", "_", operation_id)
+    operation_id = operation_id + "_" + method.lower()
+    return operation_id
+
+
+def generate_operation_id(*, route: ViewRoute, method: str) -> str:
+    if route.operation_id:
+        return route.operation_id
+    path: str = route.path_format
+    return generate_operation_id_for_path(name=route.name, path=path, method=method)
+
+
+def generate_operation_summary(*, route: ViewRoute, method: str) -> str:
+    if route.summary:
+        return route.summary
+    return route.name.replace("_", " ").title()
+
+
+def get_openapi_operation_metadata(*, route: ViewRoute, method: str) -> Dict:
+    operation: Dict[str, Any] = {}
+    if route.tags:
+        operation["tags"] = route.tags
+    operation["summary"] = generate_operation_summary(route=route, method=method)
+    if route.description:
+        operation["description"] = route.description
+    operation["operationId"] = generate_operation_id(route=route, method=method)
+    if route.deprecated:
+        operation["deprecated"] = route.deprecated
+    return operation
+
+
+def get_openapi_operation_parameters(
+        *,
+        all_route_params: Sequence[ModelField],
+        model_name_map: Dict[Union[Type[BaseModel], Type[Enum]], str],
+) -> List[Dict[str, Any]]:
+    parameters = []
+    for param in all_route_params:
+        field_info = param.field_info
+        field_info = cast(Param, field_info)
+        # ignore mypy error until enum schemas are released
+        parameter = {
+            "name": param.alias,
+            "in": field_info.in_.value,
+            "required": param.required,
+            "schema": field_schema(
+                param, model_name_map=model_name_map, ref_prefix=REF_PREFIX  # type: ignore
+            )[0],
+        }
+        if field_info.description:
+            parameter["description"] = field_info.description
+        if field_info.deprecated:
+            parameter["deprecated"] = field_info.deprecated
+        parameters.append(parameter)
+    return parameters
+
+
+def get_openapi_operation_request_body(
+        *,
+        body_field: Optional[ModelField],
+        model_name_map: Dict[Union[Type[BaseModel], Type[Enum]], str],
+) -> Optional[Dict]:
+    if not body_field:
+        return None
+    assert isinstance(body_field, ModelField)
+    # ignore mypy error until enum schemas are released
+    body_schema, _, _ = field_schema(
+        body_field, model_name_map=model_name_map, ref_prefix=REF_PREFIX  # type: ignore
+    )
+    field_info = cast(Body, body_field.field_info)
+    request_media_type = field_info.media_type
+    required = body_field.required
+    request_body_oai: Dict[str, Any] = {}
+    if required:
+        request_body_oai["required"] = required
+    request_body_oai["content"] = {request_media_type: {"schema": body_schema}}
+    return request_body_oai
+
+
+def get_openapi_path(
+        *, route: ViewRoute, model_name_map: Dict[Type, str]
+) -> Tuple[Dict, Dict, Dict]:
+    path = {}
+    security_schemes: Dict[str, Any] = {}
+    definitions: Dict[str, Any] = {}
+    assert route.methods is not None, "Methods must be a list"
+    assert route.response_class, "A response class is needed to generate OpenAPI"
+    # route_response_media_type: Optional[str] = route.response_class.media_type
+    if route.include_in_schema:
+        for method in route.methods:
+            operation = get_openapi_operation_metadata(route=route, method=method)
+            parameters: List[Dict] = []
+            all_route_params = route.dependant.get_flat_params()
+            operation_parameters = get_openapi_operation_parameters(
+                all_route_params=all_route_params, model_name_map=model_name_map
+            )
+            parameters.extend(operation_parameters)
+            if parameters:
+                operation["parameters"] = list(
+                    {param["name"]: param for param in parameters}.values()
+                )
+            if method in METHODS_WITH_BODY:
+                request_body_oai = get_openapi_operation_request_body(
+                    body_field=route.body_field, model_name_map=model_name_map
+                )
+                if request_body_oai:
+                    operation["requestBody"] = request_body_oai
+            status_code = str(route.status_code)
+            operation.setdefault("responses", {}).setdefault(status_code, {})[
+                "description"
+            ] = route.response_description
+            # if (
+            #     route_response_media_type
+            #     and route.status_code not in STATUS_CODES_WITH_NO_BODY
+            # ):
+            #     response_schema = {"type": "string"}
+            #     if lenient_issubclass(route.response_class, JSONResponse):
+            #         if route.response_field:
+            #             response_schema, _, _ = field_schema(
+            #                 route.response_field,
+            #                 model_name_map=model_name_map,
+            #                 ref_prefix=REF_PREFIX,
+            #             )
+            #         else:
+            #             response_schema = {}
+            #     operation.setdefault("responses", {}).setdefault(
+            #         status_code, {}
+            #     ).setdefault("content", {}).setdefault(route_response_media_type, {})[
+            #         "schema"
+            #     ] = response_schema
+            http422 = str(HTTP_422_UNPROCESSABLE_ENTITY)
+            if (all_route_params or route.body_field) and not any(
+                    [
+                        status in operation["responses"]
+                        for status in [http422, "4XX", "default"]
+                    ]
+            ):
+                operation["responses"][http422] = {
+                    "description": "Validation Error",
+                    "content": {
+                        "application/json": {
+                            "schema": {"$ref": REF_PREFIX + "HTTPValidationError"}
+                        }
+                    },
+                }
+                if "ValidationError" not in definitions:
+                    definitions.update(
+                        {
+                            "ValidationError": validation_error_definition,
+                            "HTTPValidationError": validation_error_response_definition,
+                        }
+                    )
+            path[method.lower()] = operation
+    return path, security_schemes, definitions
 
 
 def get_openapi(
-    *,
-    title: str,
-    version: str,
-    openapi_version: str = "3.0.2",
-    description: Optional[str] = None,
-    routes: Sequence,
-    tags: Optional[List[Dict[str, Any]]] = None,
-    servers: Optional[List[Dict[str, Union[str, Any]]]] = None,
+        *,
+        title: str,
+        version: str,
+        openapi_version: str = "3.0.2",
+        description: Optional[str] = None,
+        routes: Sequence,
+        tags: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict:
     info = {"title": title, "version": version}
     if description:
         info["description"] = description
     output: Dict[str, Any] = {"openapi": openapi_version, "info": info}
-    if servers:
-        output["servers"] = servers
     components: Dict[str, Dict] = {}
     paths: Dict[str, Dict] = {}
-    # flat_models = get_flat_models_from_routes(routes)
-    # # ignore mypy error until enum schemas are released
-    # model_name_map = get_model_name_map(flat_models)  # type: ignore
-    # # ignore mypy error until enum schemas are released
-    # definitions = get_model_definitions(
-    #     flat_models=flat_models, model_name_map=model_name_map  # type: ignore
-    # )
-    # for route in routes:
-    #     if isinstance(route, routing.APIRoute):
-    #         result = get_openapi_path(route=route, model_name_map=model_name_map)
-    #         if result:
-    #             path, security_schemes, path_definitions = result
-    #             if path:
-    #                 paths.setdefault(route.path_format, {}).update(path)
-    #             if security_schemes:
-    #                 components.setdefault("securitySchemes", {}).update(
-    #                     security_schemes
-    #                 )
-    #             if path_definitions:
-    #                 definitions.update(path_definitions)
-    # if definitions:
-    #     components["schemas"] = {k: definitions[k] for k in sorted(definitions)}
-    # if components:
-    #     output["components"] = components
-    # output["paths"] = paths
-    # if tags:
-    #     output["tags"] = tags
-    # return jsonable_encoder(OpenAPI(**output), by_alias=True, exclude_none=True)
-    return {"test": "123"}
+    flat_models = get_flat_models_from_routes(routes)
+    # ignore mypy error until enum schemas are released
+    model_name_map = get_model_name_map(flat_models)  # type: ignore
+    # ignore mypy error until enum schemas are released
+    definitions = get_model_definitions(
+        flat_models=flat_models, model_name_map=model_name_map  # type: ignore
+    )
+    for route in routes:
+        if isinstance(route, ViewRoute):
+            result = get_openapi_path(route=route, model_name_map=model_name_map)
+            if result:
+                path, security_schemes, path_definitions = result
+                if path:
+                    paths.setdefault(route.path_format, {}).update(path)
+                if security_schemes:
+                    components.setdefault("securitySchemes", {}).update(
+                        security_schemes
+                    )
+                if path_definitions:
+                    definitions.update(path_definitions)
+    if definitions:
+        components["schemas"] = {k: definitions[k] for k in sorted(definitions)}
+    if components:
+        output["components"] = components
+    output["paths"] = paths
+    if tags:
+        output["tags"] = tags
+    return jsonable_encoder(OpenAPI(**output), by_alias=True, exclude_none=True)
+
+
+def generate_encoders_by_class_tuples(
+        type_encoder_map: Dict[Any, Callable]
+) -> Dict[Callable, Tuple]:
+    encoders_by_class_tuples: Dict[Callable, Tuple] = defaultdict(tuple)
+    for type_, encoder in type_encoder_map.items():
+        encoders_by_class_tuples[encoder] += (type_,)
+    return encoders_by_class_tuples
+
+
+encoders_by_class_tuples = generate_encoders_by_class_tuples(ENCODERS_BY_TYPE)
+
+
+def jsonable_encoder(
+        obj: Any,
+        include: Optional[Union[SetIntStr, DictIntStrAny]] = None,
+        exclude: Optional[Union[SetIntStr, DictIntStrAny]] = None,
+        by_alias: bool = True,
+        exclude_unset: bool = False,
+        exclude_defaults: bool = False,
+        exclude_none: bool = False,
+        custom_encoder: dict = {},
+        sqlalchemy_safe: bool = True,
+) -> Any:
+    if include is not None and not isinstance(include, set):
+        include = set(include)
+    if exclude is not None and not isinstance(exclude, set):
+        exclude = set(exclude)
+    if isinstance(obj, BaseModel):
+        encoder = getattr(obj.__config__, "json_encoders", {})
+        if custom_encoder:
+            encoder.update(custom_encoder)
+        obj_dict = obj.dict(
+            include=include,
+            exclude=exclude,
+            by_alias=by_alias,
+            exclude_unset=exclude_unset,
+            exclude_none=exclude_none,
+            exclude_defaults=exclude_defaults,
+        )
+        if "__root__" in obj_dict:
+            obj_dict = obj_dict["__root__"]
+        return jsonable_encoder(
+            obj_dict,
+            exclude_none=exclude_none,
+            exclude_defaults=exclude_defaults,
+            custom_encoder=encoder,
+            sqlalchemy_safe=sqlalchemy_safe,
+        )
+    if isinstance(obj, Enum):
+        return obj.value
+    if isinstance(obj, PurePath):
+        return str(obj)
+    if isinstance(obj, (str, int, float, type(None))):
+        return obj
+    if isinstance(obj, dict):
+        encoded_dict = {}
+        for key, value in obj.items():
+            if (
+                    (
+                            not sqlalchemy_safe
+                            or (not isinstance(key, str))
+                            or (not key.startswith("_sa"))
+                    )
+                    and (value is not None or not exclude_none)
+                    and ((include and key in include) or not exclude or key not in exclude)
+            ):
+                encoded_key = jsonable_encoder(
+                    key,
+                    by_alias=by_alias,
+                    exclude_unset=exclude_unset,
+                    exclude_none=exclude_none,
+                    custom_encoder=custom_encoder,
+                    sqlalchemy_safe=sqlalchemy_safe,
+                )
+                encoded_value = jsonable_encoder(
+                    value,
+                    by_alias=by_alias,
+                    exclude_unset=exclude_unset,
+                    exclude_none=exclude_none,
+                    custom_encoder=custom_encoder,
+                    sqlalchemy_safe=sqlalchemy_safe,
+                )
+                encoded_dict[encoded_key] = encoded_value
+        return encoded_dict
+    if isinstance(obj, (list, set, frozenset, GeneratorType, tuple)):
+        encoded_list = []
+        for item in obj:
+            encoded_list.append(
+                jsonable_encoder(
+                    item,
+                    include=include,
+                    exclude=exclude,
+                    by_alias=by_alias,
+                    exclude_unset=exclude_unset,
+                    exclude_defaults=exclude_defaults,
+                    exclude_none=exclude_none,
+                    custom_encoder=custom_encoder,
+                    sqlalchemy_safe=sqlalchemy_safe,
+                )
+            )
+        return encoded_list
+
+    if custom_encoder:
+        if type(obj) in custom_encoder:
+            return custom_encoder[type(obj)](obj)
+        else:
+            for encoder_type, encoder in custom_encoder.items():
+                if isinstance(obj, encoder_type):
+                    return encoder(obj)
+
+    if type(obj) in ENCODERS_BY_TYPE:
+        return ENCODERS_BY_TYPE[type(obj)](obj)
+    for encoder, classes_tuple in encoders_by_class_tuples.items():
+        if isinstance(obj, classes_tuple):
+            return encoder(obj)
+
+    errors: List[Exception] = []
+    try:
+        data = dict(obj)
+    except Exception as e:
+        errors.append(e)
+        try:
+            data = vars(obj)
+        except Exception as e:
+            errors.append(e)
+            raise ValueError(errors)
+    return jsonable_encoder(
+        data,
+        by_alias=by_alias,
+        exclude_unset=exclude_unset,
+        exclude_defaults=exclude_defaults,
+        exclude_none=exclude_none,
+        custom_encoder=custom_encoder,
+        sqlalchemy_safe=sqlalchemy_safe,
+    )
+
+
+class OpenAPISchemaGenerator(object):
+    def __init__(
+            self,
+            *,
+            title: str,
+            version: str,
+            openapi_version: str = "3.0.2",
+            description: Optional[str] = None,
+            urlpatterns: List = None,
+            routes: Sequence,
+    ):
+        self.title = title
+        self.version = version
+        self.openapi_version = openapi_version
+        self.description = description
+        self.urlpatterns = urlpatterns
+        self.routes = routes
+
+        if urlpatterns is None:
+            # todo: get django url patterns
+            pass
+
+    def get_schema(self) -> Dict:
+        return get_openapi(
+            title=self.title,
+            version=self.version,
+            openapi_version=self.openapi_version,
+            description=self.description,
+            routes=self.routes,
+        )

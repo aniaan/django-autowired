@@ -187,6 +187,15 @@ class Dependant(object):
 
         return flat_dependant
 
+    def get_flat_params(self) -> List[ModelField]:
+        flat_dependant = self.flat()
+        return (
+                flat_dependant.path_params
+                + flat_dependant.query_params
+                + flat_dependant.header_params
+                + flat_dependant.cookie_params
+        )
+
     def get_body_field(self, *, name: str) -> Optional[ModelField]:
         """
         name: must be unique
