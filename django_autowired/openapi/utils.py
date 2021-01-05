@@ -2,6 +2,7 @@ import re
 
 from collections import defaultdict
 from enum import Enum
+from importlib import import_module
 from types import GeneratorType
 from typing import Any
 from typing import cast
@@ -25,6 +26,7 @@ from pydantic.utils import lenient_issubclass
 from pydantic.json import ENCODERS_BY_TYPE
 from django.urls import URLPattern
 from django.urls import URLResolver
+from django.conf import settings
 from django.http.response import JsonResponse
 from django.http.response import HttpResponse
 from django_autowired.params import Param
@@ -36,7 +38,6 @@ from django_autowired.openapi.constants import METHODS_WITH_BODY
 from django_autowired.openapi.constants import STATUS_CODES_WITH_NO_BODY
 from django_autowired.openapi.models import OpenAPI
 from django_autowired.logger import logger
-
 
 validation_error_definition = {
     "title": "ValidationError",
@@ -198,36 +199,17 @@ def get_openapi_operation_request_body(
     request_body_oai["content"] = {request_media_type: {"schema": body_schema}}
     return request_body_oai
 
-class DefaultPlaceholder:
-    """
-    You shouldn't use this class directly.
-
-    It's used internally to recognize when a default value has been overwritten, even
-    if the overriden default value was truthy.
-    """
-
-    def __init__(self, value: Any):
-        self.value = value
-
-    def __bool__(self) -> bool:
-        return bool(self.value)
-
-    def __eq__(self, o: object) -> bool:
-        return isinstance(o, DefaultPlaceholder) and o.value == self.value
 
 def get_openapi_path(
         *, route: ViewRoute, model_name_map: Dict[Type, str]
-) -> Tuple[Dict, Dict, Dict]:
+) -> Tuple[Dict, Dict]:
     path = {}
-    security_schemes: Dict[str, Any] = {}
     definitions: Dict[str, Any] = {}
     assert route.methods is not None, "Methods must be a list"
-    # if isinstance(route.response_class, DefaultPlaceholder):
-    #     current_response_class: Type[HttpResponse] = route.response_class.value
-    # else:
-    #     current_response_class = route.response_class
-    assert route.response_class, "A response class is needed to generate OpenAPI"
-    # route_response_media_type: Optional[str] = route.response_class.media_type
+    assert route.response_class, "A response class is n" \
+                                 "eeded to generate OpenAPI"
+    #
+    route_response_media_type = "application/json"
     if route.include_in_schema:
         for method in route.methods:
             operation = get_openapi_operation_metadata(route=route, method=method)
@@ -251,26 +233,27 @@ def get_openapi_path(
             operation.setdefault("responses", {}).setdefault(status_code, {})[
                 "description"
             ] = route.response_description
-            # if (
-            #     route_response_media_type
-            #     and route.status_code not in STATUS_CODES_WITH_NO_BODY
-            # ):
-            #     response_schema = {"type": "string"}
-            #     if lenient_issubclass(route.response_class, JsonResponse):
-            #         if route.response_field:
-            #             response_schema, _, _ = field_schema(
-            #                 route.response_field,
-            #                 model_name_map=model_name_map,
-            #                 ref_prefix=REF_PREFIX,
-            #             )
-            #         else:
-            #             response_schema = {}
-            #     operation.setdefault("responses", {}).setdefault(
-            #         status_code, {}
-            #     ).setdefault("content", {}).setdefault(route_response_media_type, {})[
-            #         "schema"
-            #     ] = response_schema
+            if (
+                # route_response_media_type
+                route.status_code not in STATUS_CODES_WITH_NO_BODY
+            ):
+                response_schema = {"type": "string"}
+                if lenient_issubclass(route.response_class, JsonResponse):
+                    if route.response_field:
+                        response_schema, _, _ = field_schema(
+                            route.response_field,
+                            model_name_map=model_name_map,
+                            ref_prefix=REF_PREFIX,
+                        )
+                    else:
+                        response_schema = {}
+                operation.setdefault("responses", {}).setdefault(
+                    status_code, {}
+                ).setdefault("content", {}).setdefault(route_response_media_type, {})[
+                    "schema"
+                ] = response_schema
             http422 = str(HTTP_422_UNPROCESSABLE_ENTITY)
+            # todo if route.responses:
             if (all_route_params or route.body_field) and not any(
                     [
                         status in operation["responses"]
@@ -293,7 +276,8 @@ def get_openapi_path(
                         }
                     )
             path[method.lower()] = operation
-    return path, security_schemes, definitions
+
+    return path, definitions
 
 
 def get_openapi(
@@ -322,13 +306,9 @@ def get_openapi(
         if isinstance(route, ViewRoute):
             result = get_openapi_path(route=route, model_name_map=model_name_map)
             if result:
-                path, security_schemes, path_definitions = result
+                path, path_definitions = result
                 if path:
                     paths.setdefault(route.path_format, {}).update(path)
-                if security_schemes:
-                    components.setdefault("securitySchemes", {}).update(
-                        security_schemes
-                    )
                 if path_definitions:
                     definitions.update(path_definitions)
     if definitions:
@@ -497,18 +477,23 @@ class OpenAPISchemaGenerator(object):
         self.view_route = view_route
 
         if urlpatterns is None:
-            # todo: get django url patterns
-            pass
+            # Use the default Django URL conf
+            urlconf = settings.ROOT_URLCONF
+
+            # Load the given URLconf module
+            if isinstance(urlconf, str):
+                urls = import_module(urlconf)
+            else:
+                urls = urlconf
+            self.patterns = urls.urlpatterns
         self.set_route_path()
 
     def set_route_path(self):
         # get all path
         endpoints = self.get_api_endpoints()
-        print(endpoints)
         routes = self.view_route
         self.routes = []
         for r in routes.keys():
-            print(r.__qualname__)
             fun_name = '.'.join(r.__qualname__.split('.')[:-1])
             for e in endpoints:
                 path, callback = e
