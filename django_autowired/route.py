@@ -19,7 +19,7 @@ from pydantic.fields import ModelField
 
 ViewFunc = Callable
 
-# Match parameters in URL paths, eg. '<int: param>'
+# Match parameters in URL paths, eg.
 PARAM_REGEX = re.compile("<([a-zA-Z_][a-zA-Z0-9_]*)(:[a-zA-Z_][a-zA-Z0-9_]*)?>")
 
 
@@ -119,16 +119,14 @@ class ViewRoute(object):
         self.summary = summary
         self.description = description
         self.response_description = response_description
-        # todo
-        self.name = str(self._view_func)
+        self.name = self._view_func.__qualname__
         self.operation_id = operation_id
-
-        # todo: parse path
-        self.path = 'test'
-        self.path_regex, self.path_format, self.param_convertors = compile_path(self.path)
-        print(self.path_regex, self.path_format, self.param_convertors)
         # func_view?
         self.methods = self._view_func.__name__
+
+    def set_path(self, path: str) -> None:
+        self.path = path
+        self.path_regex, self.path_format, self.param_convertors = compile_path(self.path)
 
     @property
     def dependant(self) -> Dependant:

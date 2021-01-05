@@ -7,6 +7,7 @@ from django.test import override_settings
 from django.urls import path
 from django.views import View
 from django_autowired.autowired import autowired
+from django_autowired.openapi.utils import OpenAPISchemaGenerator
 from django_autowired.param_func import Body
 from django_autowired.param_func import Path
 from django_autowired.param_func import Query
@@ -77,14 +78,20 @@ urlpatterns = [
 
 @override_settings(ROOT_URLCONF="tests.test_body")
 class TestOpenapiSchema(BaseTestCase):
-    def test_open_api(self):
-        response = self.get_json(url='/openapi.json', data=None)
-        print(response.json())
+    # def test_open_api(self):
+    #     response = self.get_json(url='/openapi.json', data=None)
+    #     print(response.json())
+
+    def test_get_json(self):
+        generator = OpenAPISchemaGenerator(urlpatterns=urlpatterns, view_route=autowired._view_route)
+        res = generator.get_schema()
+        print(res)
+
 
 
 @override_settings(ROOT_URLCONF="tests.test_body")
 class TestSwaggerSchema(BaseTestCase):
-    def test_open_api(self):
+    def test_swagger(self):
         response = self.client.get('/swagger')
         print(response.content)
 

@@ -4,6 +4,7 @@ from collections import defaultdict
 from enum import Enum
 from types import GeneratorType
 from typing import Any
+from typing import cast
 from typing import Callable
 from typing import Sequence
 from typing import Set
@@ -11,9 +12,8 @@ from typing import Dict
 from typing import List
 from typing import Optional
 from typing import Type
-from typing import cast
-from typing import Tuple
 from typing import Union
+from typing import Tuple
 from pathlib import PurePath
 from pydantic import BaseModel
 from pydantic.fields import ModelField
@@ -23,14 +23,20 @@ from pydantic.schema import model_process_schema
 from pydantic.schema import get_model_name_map
 from pydantic.utils import lenient_issubclass
 from pydantic.json import ENCODERS_BY_TYPE
-
+from django.urls import URLPattern
+from django.urls import URLResolver
+from django.http.response import JsonResponse
+from django.http.response import HttpResponse
 from django_autowired.params import Param
 from django_autowired.params import Body
 from django_autowired.route import ViewRoute
 from django_autowired.status import HTTP_422_UNPROCESSABLE_ENTITY
 from django_autowired.openapi.constants import REF_PREFIX
 from django_autowired.openapi.constants import METHODS_WITH_BODY
+from django_autowired.openapi.constants import STATUS_CODES_WITH_NO_BODY
 from django_autowired.openapi.models import OpenAPI
+from django_autowired.logger import logger
+
 
 validation_error_definition = {
     "title": "ValidationError",
@@ -192,6 +198,22 @@ def get_openapi_operation_request_body(
     request_body_oai["content"] = {request_media_type: {"schema": body_schema}}
     return request_body_oai
 
+class DefaultPlaceholder:
+    """
+    You shouldn't use this class directly.
+
+    It's used internally to recognize when a default value has been overwritten, even
+    if the overriden default value was truthy.
+    """
+
+    def __init__(self, value: Any):
+        self.value = value
+
+    def __bool__(self) -> bool:
+        return bool(self.value)
+
+    def __eq__(self, o: object) -> bool:
+        return isinstance(o, DefaultPlaceholder) and o.value == self.value
 
 def get_openapi_path(
         *, route: ViewRoute, model_name_map: Dict[Type, str]
@@ -200,6 +222,10 @@ def get_openapi_path(
     security_schemes: Dict[str, Any] = {}
     definitions: Dict[str, Any] = {}
     assert route.methods is not None, "Methods must be a list"
+    # if isinstance(route.response_class, DefaultPlaceholder):
+    #     current_response_class: Type[HttpResponse] = route.response_class.value
+    # else:
+    #     current_response_class = route.response_class
     assert route.response_class, "A response class is needed to generate OpenAPI"
     # route_response_media_type: Optional[str] = route.response_class.media_type
     if route.include_in_schema:
@@ -230,7 +256,7 @@ def get_openapi_path(
             #     and route.status_code not in STATUS_CODES_WITH_NO_BODY
             # ):
             #     response_schema = {"type": "string"}
-            #     if lenient_issubclass(route.response_class, JSONResponse):
+            #     if lenient_issubclass(route.response_class, JsonResponse):
             #         if route.response_field:
             #             response_schema, _, _ = field_schema(
             #                 route.response_field,
@@ -456,23 +482,250 @@ class OpenAPISchemaGenerator(object):
     def __init__(
             self,
             *,
-            title: str,
-            version: str,
+            title: str = "",
+            version: str = "",
             openapi_version: str = "3.0.2",
             description: Optional[str] = None,
-            urlpatterns: List = None,
-            routes: Sequence,
+            urlpatterns: List[URLPattern] = None,
+            view_route: Dict[Callable, ViewRoute],
     ):
         self.title = title
         self.version = version
         self.openapi_version = openapi_version
         self.description = description
-        self.urlpatterns = urlpatterns
-        self.routes = routes
+        self.patterns = urlpatterns
+        self.view_route = view_route
 
         if urlpatterns is None:
             # todo: get django url patterns
             pass
+        self.set_route_path()
+
+    def set_route_path(self):
+        # get all path
+        endpoints = self.get_api_endpoints()
+        print(endpoints)
+        routes = self.view_route
+        self.routes = []
+        for r in routes.keys():
+            print(r.__qualname__)
+            fun_name = '.'.join(r.__qualname__.split('.')[:-1])
+            for e in endpoints:
+                path, callback = e
+                if callback.__qualname__ == fun_name:
+                    routes[r].set_path(path)
+                    self.routes.append(routes[r])
+                    continue
+
+    # @staticmethod
+    # def endpoint_ordering(endpoint: List[Tuple[str, Any, Any]]) -> Tuple[int]:
+    #     path, method, callback = endpoint
+    #     method_priority = {
+    #         'GET': 0,
+    #         'POST': 1,
+    #         'PUT': 2,
+    #         'PATCH': 3,
+    #         'DELETE': 4
+    #     }.get(method, 5)
+    #     return (method_priority,)
+
+    def get_api_endpoints(
+            self,
+            patterns: List[URLPattern] = None,
+            prefix: str = '',
+            app_name: str = None,
+            namespace: str = None,
+            ignored_endpoints: Set = None
+    ) -> List[Tuple[str, Any]]:
+        if patterns is None:
+            patterns = self.patterns
+
+        api_endpoints = []
+        if ignored_endpoints is None:
+            ignored_endpoints = set()
+
+        for pattern in patterns:
+            path_regex = prefix + str(pattern.pattern)
+            if isinstance(pattern, URLPattern):
+                try:
+                    path = self.get_path_from_regex(path_regex)
+                    print('path', path)
+                    callback = pattern.callback
+                    print(callback, callback.__qualname__, type(callback))
+                    if path in ignored_endpoints:
+                        continue
+                    ignored_endpoints.add(path)
+
+                    endpoint = (path, callback)
+                    api_endpoints.append(endpoint)
+                except Exception:
+                    logger.warning('failed to enumerate view', exc_info=True)
+
+            elif isinstance(pattern, URLResolver):
+                nested_endpoints = self.get_api_endpoints(
+                    patterns=pattern.url_patterns,
+                    prefix=path_regex,
+                    app_name="%s:%s" % (app_name, pattern.app_name) if app_name else pattern.app_name,
+                    namespace="%s:%s" % (namespace, pattern.namespace) if namespace else pattern.namespace,
+                    ignored_endpoints=ignored_endpoints
+                )
+                api_endpoints.extend(nested_endpoints)
+            else:
+                raise TypeError(f"unknown pattern type {type(pattern)}")
+
+        # api_endpoints = sorted(api_endpoints, key=self.endpoint_ordering)
+
+        return api_endpoints
+
+    @staticmethod
+    def replace_named_groups(pattern: str) -> str:
+        r"""
+        Find named groups in `pattern` and replace them with the group name. E.g.,
+        1. ^(?P<a>\w+)/b/(\w+)$ ==> ^<a>/b/(\w+)$
+        2. ^(?P<a>\w+)/b/(?P<c>\w+)/$ ==> ^<a>/b/<c>/$
+        """
+        named_group_matcher = re.compile(r'\(\?P(<\w+>)')
+        named_group_indices = [
+            (m.start(0), m.end(0), m.group(1))
+            for m in named_group_matcher.finditer(pattern)
+        ]
+        # Tuples of (named capture group pattern, group name).
+        group_pattern_and_name = []
+        # Loop over the groups and their start and end indices.
+        for start, end, group_name in named_group_indices:
+            # Handle nested parentheses, e.g. '^(?P<a>(x|y))/b'.
+            unmatched_open_brackets, prev_char = 1, None
+            for idx, val in enumerate(list(pattern[end:])):
+                # If brackets are balanced, the end of the string for the current
+                # named capture group pattern has been reached.
+                if unmatched_open_brackets == 0:
+                    group_pattern_and_name.append((pattern[start:end + idx], group_name))
+                    break
+
+                # Check for unescaped `(` and `)`. They mark the start and end of a
+                # nested group.
+                if val == '(' and prev_char != '\\':
+                    unmatched_open_brackets += 1
+                elif val == ')' and prev_char != '\\':
+                    unmatched_open_brackets -= 1
+                prev_char = val
+
+        # Replace the string for named capture groups with their group names.
+        for group_pattern, group_name in group_pattern_and_name:
+            pattern = pattern.replace(group_pattern, group_name)
+        return pattern
+
+    @staticmethod
+    def replace_unnamed_groups(pattern: str) -> str:
+        r"""
+        Find unnamed groups in `pattern` and replace them with '<var>'. E.g.,
+        1. ^(?P<a>\w+)/b/(\w+)$ ==> ^(?P<a>\w+)/b/<var>$
+        2. ^(?P<a>\w+)/b/((x|y)\w+)$ ==> ^(?P<a>\w+)/b/<var>$
+        """
+        unnamed_group_matcher = re.compile(r'\(')
+        unnamed_group_indices = [m.start(0) for m in unnamed_group_matcher.finditer(pattern)]
+        # Indices of the start of unnamed capture groups.
+        group_indices = []
+        # Loop over the start indices of the groups.
+        for start in unnamed_group_indices:
+            # Handle nested parentheses, e.g. '^b/((x|y)\w+)$'.
+            unmatched_open_brackets, prev_char = 1, None
+            for idx, val in enumerate(list(pattern[start + 1:])):
+                if unmatched_open_brackets == 0:
+                    group_indices.append((start, start + 1 + idx))
+                    break
+
+                # Check for unescaped `(` and `)`. They mark the start and end of
+                # a nested group.
+                if val == '(' and prev_char != '\\':
+                    unmatched_open_brackets += 1
+                elif val == ')' and prev_char != '\\':
+                    unmatched_open_brackets -= 1
+                prev_char = val
+
+        # Remove unnamed group matches inside other unnamed capture groups.
+        group_start_end_indices = []
+        prev_end = None
+        for start, end in group_indices:
+            if prev_end and start > prev_end or not prev_end:
+                group_start_end_indices.append((start, end))
+            prev_end = end
+
+        if group_start_end_indices:
+            # Replace unnamed groups with <var>. Handle the fact that replacing the
+            # string between indices will change string length and thus indices
+            # will point to the wrong substring if not corrected.
+            final_pattern, prev_end = [], None
+            for start, end in group_start_end_indices:
+                if prev_end:
+                    final_pattern.append(pattern[prev_end:start])
+                final_pattern.append(pattern[:start] + '<var>')
+                prev_end = end
+            final_pattern.append(pattern[prev_end:])
+            return ''.join(final_pattern)
+        else:
+            return pattern
+
+    @classmethod
+    def simplify_regex(cls, pattern: str) -> str:
+        r"""
+        Clean up urlpattern regexes into something more readable by humans. For
+        example, turn "^(?P<sport_slug>\w+)/athletes/(?P<athlete_slug>\w+)/$"
+        into "/<sport_slug>/athletes/<athlete_slug>/".
+        """
+        pattern = cls.replace_named_groups(pattern)
+        pattern = cls.replace_unnamed_groups(pattern)
+        # clean up any outstanding regex-y characters.
+        pattern = pattern.replace('^', '').replace('$', '').replace('?', '')
+        if not pattern.startswith('/'):
+            pattern = '/' + pattern
+        return pattern
+
+    @classmethod
+    def unescape(cls, s) -> str:
+        """Unescape all backslash escapes from `s`.
+
+        :param str s: string with backslash escapes
+        :rtype: str
+        """
+        # unlike .replace('\\', ''), this corectly transforms a double backslash into a single backslash
+        return re.sub(r'\\(.)', r'\1', s)
+
+    @classmethod
+    def unescape_path(cls, path: str) -> str:
+        """Remove backslashe escapes from all path components outside {parameters}. This is needed because
+        ``simplify_regex`` does not handle this correctly.
+
+        **NOTE:** this might destructively affect some url regex patterns that contain metacharacters (e.g. \\w, \\d)
+        outside path parameter groups; if you are in this category, God help you
+
+        :param str path: path possibly containing
+        :return: the unescaped path
+        :rtype: str
+        """
+        PATH_PARAMETER_RE = re.compile(r'{(?P<parameter>\w+)}')
+        clean_path = ''
+        while path:
+            match = PATH_PARAMETER_RE.search(path)
+            if not match:
+                clean_path += cls.unescape(path)
+                break
+            clean_path += cls.unescape(path[:match.start()])
+            clean_path += match.group()
+            path = path[match.end():]
+        return clean_path
+
+    @classmethod
+    def get_path_from_regex(cls, path_regex: str):
+        if path_regex.endswith(')'):
+            logger.warning("url pattern does not end in $ ('%s') - unexpected things might happen", path_regex)
+        path = cls.simplify_regex(path_regex)
+        _PATH_PARAMETER_COMPONENT_RE = re.compile(
+            r'<(?:(?P<converter>[^>:]+):)?(?P<parameter>\w+)>'
+        )
+        # Strip Django 2.0 convertors as they are incompatible with uritemplate format
+        res = re.sub(_PATH_PARAMETER_COMPONENT_RE, r'{\g<parameter>}', path)
+        return cls.unescape_path(res)
 
     def get_schema(self) -> Dict:
         return get_openapi(

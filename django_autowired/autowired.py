@@ -133,14 +133,14 @@ class Autowired(object):
 
     def openapi(self) -> Dict:
         if not self.openapi_schema:
-            routes = [v for k, v in self._view_route.items()]
-            print('routes', routes)
+            # routes = [v for k, v in self._view_route.items()]
+            # print('routes', routes)
             generator = OpenAPISchemaGenerator(
                 title=self.title,
                 version=self.version,
                 openapi_version=self.openapi_version,
                 description=self.description,
-                routes=routes,
+                view_route=self._view_route,
             )
             self.openapi_schema = generator.get_schema()
         return self.openapi_schema
