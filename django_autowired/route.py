@@ -13,7 +13,6 @@ from django_autowired.dependency.utils import DependantUtils
 from django_autowired.openapi.convertors import Convertor
 from django_autowired.openapi.convertors import CONVERTOR_TYPES
 from django_autowired import params
-from django_autowired.utils import get_view_name
 from django.http.response import HttpResponse
 from django.http.response import JsonResponse
 from pydantic.fields import ModelField
@@ -120,9 +119,9 @@ class ViewRoute(object):
         self.summary = summary
         self.description = description
         self.response_description = response_description
-        self.name = self._view_func.__qualname__
+        self.name = name if name else self._view_func.__name__
         self.operation_id = operation_id
-        # func_view?
+        self.qualname = self._view_func.__qualname__
         self.methods = [self._view_func.__name__]
 
     def set_path(self, path: str) -> None:

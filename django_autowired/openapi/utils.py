@@ -136,7 +136,7 @@ def generate_operation_id(*, route: ViewRoute, method: str) -> str:
 def generate_operation_summary(*, route: ViewRoute, method: str) -> str:
     if route.summary:
         return route.summary
-    return route.name.replace("_", " ").title()
+    return route.qualname.replace("_", " ").replace(".", " ").title()
 
 
 def get_openapi_operation_metadata(*, route: ViewRoute, method: str) -> Dict:
@@ -253,7 +253,7 @@ def get_openapi_path(
                     "schema"
                 ] = response_schema
             http422 = str(HTTP_422_UNPROCESSABLE_ENTITY)
-            # todo if route.responses:
+            #
             if (all_route_params or route.body_field) and not any(
                     [
                         status in operation["responses"]
@@ -302,6 +302,7 @@ def get_openapi(
     definitions = get_model_definitions(
         flat_models=flat_models, model_name_map=model_name_map  # type: ignore
     )
+    # todo: security
     for route in routes:
         if isinstance(route, ViewRoute):
             result = get_openapi_path(route=route, model_name_map=model_name_map)
@@ -502,18 +503,6 @@ class OpenAPISchemaGenerator(object):
                     self.routes.append(routes[r])
                     continue
 
-    # @staticmethod
-    # def endpoint_ordering(endpoint: List[Tuple[str, Any, Any]]) -> Tuple[int]:
-    #     path, method, callback = endpoint
-    #     method_priority = {
-    #         'GET': 0,
-    #         'POST': 1,
-    #         'PUT': 2,
-    #         'PATCH': 3,
-    #         'DELETE': 4
-    #     }.get(method, 5)
-    #     return (method_priority,)
-
     def get_api_endpoints(
             self,
             patterns: List[URLPattern] = None,
@@ -534,9 +523,7 @@ class OpenAPISchemaGenerator(object):
             if isinstance(pattern, URLPattern):
                 try:
                     path = self.get_path_from_regex(path_regex)
-                    print('path', path)
                     callback = pattern.callback
-                    print(callback, callback.__qualname__, type(callback))
                     if path in ignored_endpoints:
                         continue
                     ignored_endpoints.add(path)
@@ -557,8 +544,6 @@ class OpenAPISchemaGenerator(object):
                 api_endpoints.extend(nested_endpoints)
             else:
                 raise TypeError(f"unknown pattern type {type(pattern)}")
-
-        # api_endpoints = sorted(api_endpoints, key=self.endpoint_ordering)
 
         return api_endpoints
 

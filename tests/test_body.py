@@ -88,7 +88,6 @@ class TestOpenapiSchema(BaseTestCase):
         print(res)
 
 
-
 @override_settings(ROOT_URLCONF="tests.test_body")
 class TestSwaggerSchema(BaseTestCase):
     def test_swagger(self):
