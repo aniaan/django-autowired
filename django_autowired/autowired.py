@@ -106,7 +106,7 @@ class Autowired(object):
     def setup_schema(
             self,
             title: str = "test",
-            description: str = "111",
+            description: str = "测试",
             version: str = "0.1.0",
     ):
         self.title = title
@@ -121,6 +121,10 @@ class Autowired(object):
         self.openapi_schema: Optional[Dict[str, Any]] = None
         self.setup()
 
+    @property
+    def view_route(self) -> Dict[ViewFunc, ViewRoute]:
+        return self._view_route
+
     def setup(self):
         self.setup_openapi_view()
         self.setup_swagger_ui_view()
@@ -133,8 +137,6 @@ class Autowired(object):
 
     def openapi(self) -> Dict:
         if not self.openapi_schema:
-            # routes = [v for k, v in self._view_route.items()]
-            # print('routes', routes)
             generator = OpenAPISchemaGenerator(
                 title=self.title,
                 version=self.version,

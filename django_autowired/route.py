@@ -12,6 +12,7 @@ from django_autowired.dependency.models import Dependant
 from django_autowired.dependency.utils import DependantUtils
 from django_autowired.openapi.convertors import Convertor
 from django_autowired.openapi.convertors import CONVERTOR_TYPES
+from django_autowired.utils import get_view_name
 from django_autowired import params
 from django.http.response import HttpResponse
 from django.http.response import JsonResponse
@@ -119,10 +120,14 @@ class ViewRoute(object):
         self.summary = summary
         self.description = description
         self.response_description = response_description
-        self.name = name if name else self._view_func.__name__
+        self.name = name if name else get_view_name(view_func)
         self.operation_id = operation_id
         self.qualname = self._view_func.__qualname__
-        self.methods = [self._view_func.__name__]
+        self.methods = [self._view_func.__name__.upper()]
+        self.path = ""
+        self.path_regex = ""
+        self.path_format = ""
+        self.param_convertors = ""
 
     def set_path(self, path: str) -> None:
         self.path = path

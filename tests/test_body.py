@@ -7,7 +7,6 @@ from django.test import override_settings
 from django.urls import path
 from django.views import View
 from django_autowired.autowired import autowired
-from django_autowired.openapi.utils import OpenAPISchemaGenerator
 from django_autowired.param_func import Body
 from django_autowired.param_func import Path
 from django_autowired.param_func import Query
@@ -66,33 +65,11 @@ class MultiFieldBodyView(View):
         )
 
 
-autowired.setup_schema()
 urlpatterns = [
-    path(route="openapi.json", view=autowired.get_openapi_view()),
-    path(route="swagger", view=autowired.get_swagger_ui_view()),
     path(route="class-body/<int:id>/", view=ClassBodyView.as_view()),
     path(route="embed-body/", view=EmbedBodyView.as_view()),
     path(route="multi-field-body/", view=MultiFieldBodyView.as_view()),
 ]
-
-
-@override_settings(ROOT_URLCONF="tests.test_body")
-class TestOpenapiSchema(BaseTestCase):
-    # def test_open_api(self):
-    #     response = self.get_json(url='/openapi.json', data=None)
-    #     print(response.json())
-
-    def test_get_json(self):
-        generator = OpenAPISchemaGenerator(urlpatterns=urlpatterns, view_route=autowired._view_route)
-        res = generator.get_schema()
-        print(res)
-
-
-@override_settings(ROOT_URLCONF="tests.test_body")
-class TestSwaggerSchema(BaseTestCase):
-    def test_swagger(self):
-        response = self.client.get('/swagger')
-        print(response.content)
 
 
 @override_settings(ROOT_URLCONF="tests.test_body")

@@ -28,7 +28,6 @@ from django.urls import URLPattern
 from django.urls import URLResolver
 from django.conf import settings
 from django.http.response import JsonResponse
-from django.http.response import HttpResponse
 from django_autowired.params import Param
 from django_autowired.params import Body
 from django_autowired.route import ViewRoute
