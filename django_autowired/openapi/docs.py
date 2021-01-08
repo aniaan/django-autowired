@@ -1,14 +1,24 @@
+from enum import Enum
+
 from django.http import HttpResponse
+
+
+class DefaultUrl(Enum):
+    swagger_js_url = (
+        "https://cdn.jsdelivr.net/npm/swagger-ui-dist@3/swagger-ui-bundle.js"
+    )
+    swagger_css_url = "https://cdn.jsdelivr.net/npm/swagger-ui-dist@3/swagger-ui.css"
+    swagger_favicon_url = "https://fastapi.tiangolo.com/img/favicon.png"
+
 
 def get_swagger_ui_html(
     *,
     openapi_url: str,
     title: str,
-    swagger_js_url: str = "https://cdn.jsdelivr.net/npm/swagger-ui-dist@3/swagger-ui-bundle.js",
-    swagger_css_url: str = "https://cdn.jsdelivr.net/npm/swagger-ui-dist@3/swagger-ui.css",
-    swagger_favicon_url: str = "https://fastapi.tiangolo.com/img/favicon.png",
+    swagger_js_url: str = DefaultUrl.swagger_js_url.value,
+    swagger_css_url: str = DefaultUrl.swagger_css_url.value,
+    swagger_favicon_url: str = DefaultUrl.swagger_favicon_url.value,
 ) -> HttpResponse:
-
     html = f"""
     <!DOCTYPE html>
     <html>

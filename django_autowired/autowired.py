@@ -13,13 +13,13 @@ from django.http.response import HttpResponse
 from django.http.response import JsonResponse
 from django.views import View
 from django_autowired import params
-from django_autowired.route import ViewRoute
 from django_autowired.exceptions import APIException
 from django_autowired.exceptions import RequestValidationError
-from django_autowired.typing import BodyType
-from django_autowired.utils import BodyConverter
 from django_autowired.openapi.docs import get_swagger_ui_html
 from django_autowired.openapi.utils import OpenAPISchemaGenerator
+from django_autowired.route import ViewRoute
+from django_autowired.typing import BodyType
+from django_autowired.utils import BodyConverter
 from pydantic import BaseModel
 from pydantic import ValidationError
 from pydantic.error_wrappers import ErrorWrapper
@@ -29,11 +29,11 @@ ViewFunc = Callable
 
 
 def _prepare_response_content(
-        content: Any,
-        *,
-        exclude_unset: bool = False,
-        exclude_defaults: bool = False,
-        exclude_none: bool = False,
+    content: Any,
+    *,
+    exclude_unset: bool = False,
+    exclude_defaults: bool = False,
+    exclude_none: bool = False,
 ) -> Any:
     if isinstance(content, BaseModel):
         return content.dict(
@@ -66,12 +66,12 @@ def _prepare_response_content(
 
 
 def serialize_response(
-        *,
-        response_content: Any,
-        field: Optional[ModelField] = None,
-        include: Optional[Set[str]] = None,
-        exclude: Optional[Set[str]] = None,
-        by_alias: bool = True,
+    *,
+    response_content: Any,
+    field: Optional[ModelField] = None,
+    include: Optional[Set[str]] = None,
+    exclude: Optional[Set[str]] = None,
+    by_alias: bool = True,
 ) -> Any:
     if field:
         errors = []
@@ -104,16 +104,16 @@ class Autowired(object):
         self._view_route: Dict[ViewFunc, ViewRoute] = {}
 
     def setup_schema(
-            self,
-            title: str = "test",
-            description: str = "测试",
-            version: str = "0.1.0",
+        self,
+        title: str = "test",
+        description: str = "测试",
+        version: str = "0.1.0",
     ):
         self.title = title
         self.description = description
         self.version = version
         self.openapi_version = "3.0.2"
-        self.openapi_url = '/openapi.json'
+        self.openapi_url = "/openapi.json"
 
         assert self.title, "A title must be provided for OpenAPI, e.g.: 'My API'"
         assert self.version, "A version must be provided for OpenAPI, e.g.: '2.1.0'"
@@ -168,21 +168,21 @@ class Autowired(object):
         self.swagger_view = swaggerView
 
     def __call__(
-            self,
-            description: Optional[str] = None,
-            dependencies: Optional[List[params.Depends]] = None,
-            status_code: int = 200,
-            response_model: Optional[Type[Any]] = None,
-            response_class: Type[HttpResponse] = JsonResponse,
-            response_model_include: Optional[Set[str]] = None,
-            response_model_exclude: Optional[Set[str]] = None,
-            response_model_by_alias: bool = True,
-            include_in_schema: bool = True,
-            tags: Optional[List[str]] = None,
-            deprecated: Optional[bool] = None,
-            summary: Optional[str] = None,
-            response_description: str = "Successful Response",
-            name: Optional[str] = None,
+        self,
+        description: Optional[str] = None,
+        dependencies: Optional[List[params.Depends]] = None,
+        status_code: int = 200,
+        response_model: Optional[Type[Any]] = None,
+        response_class: Type[HttpResponse] = JsonResponse,
+        response_model_include: Optional[Set[str]] = None,
+        response_model_exclude: Optional[Set[str]] = None,
+        response_model_by_alias: bool = True,
+        include_in_schema: bool = True,
+        tags: Optional[List[str]] = None,
+        deprecated: Optional[bool] = None,
+        summary: Optional[str] = None,
+        response_description: str = "Successful Response",
+        name: Optional[str] = None,
     ) -> ViewFunc:
         def decorator(func: ViewFunc) -> ViewFunc:
             # TODO

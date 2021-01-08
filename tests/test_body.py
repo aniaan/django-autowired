@@ -26,13 +26,13 @@ class Item(BaseModel):
 class ClassBodyView(View):
     @autowired(description="this is class-body view")
     def post(
-            self,
-            request: HttpRequest,
-            name: str,
-            item: Item,
-            id: int = Path(..., gt=20),
-            limit: Optional[int] = 100,
-            page: Optional[int] = Query(default=11, ge=10, le=20),
+        self,
+        request: HttpRequest,
+        name: str,
+        item: Item,
+        id: int = Path(..., gt=20),
+        limit: Optional[int] = 100,
+        page: Optional[int] = Query(default=11, ge=10, le=20),
     ):
         return JsonResponse(
             data={

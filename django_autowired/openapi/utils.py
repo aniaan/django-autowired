@@ -1,42 +1,42 @@
-import re
-
 from collections import defaultdict
 from enum import Enum
 from importlib import import_module
+from pathlib import PurePath
+import re
 from types import GeneratorType
 from typing import Any
-from typing import cast
 from typing import Callable
-from typing import Sequence
-from typing import Set
+from typing import cast
 from typing import Dict
 from typing import List
 from typing import Optional
+from typing import Sequence
+from typing import Set
+from typing import Tuple
 from typing import Type
 from typing import Union
-from typing import Tuple
-from pathlib import PurePath
-from pydantic import BaseModel
-from pydantic.fields import ModelField
-from pydantic.schema import field_schema
-from pydantic.schema import get_flat_models_from_fields
-from pydantic.schema import model_process_schema
-from pydantic.schema import get_model_name_map
-from pydantic.utils import lenient_issubclass
-from pydantic.json import ENCODERS_BY_TYPE
-from django.urls import URLPattern
-from django.urls import URLResolver
+
 from django.conf import settings
 from django.http.response import JsonResponse
-from django_autowired.params import Param
-from django_autowired.params import Body
-from django_autowired.route import ViewRoute
-from django_autowired.status import HTTP_422_UNPROCESSABLE_ENTITY
-from django_autowired.openapi.constants import REF_PREFIX
+from django.urls import URLPattern
+from django.urls import URLResolver
+from django_autowired.logger import logger
 from django_autowired.openapi.constants import METHODS_WITH_BODY
+from django_autowired.openapi.constants import REF_PREFIX
 from django_autowired.openapi.constants import STATUS_CODES_WITH_NO_BODY
 from django_autowired.openapi.models import OpenAPI
-from django_autowired.logger import logger
+from django_autowired.params import Body
+from django_autowired.params import Param
+from django_autowired.route import ViewRoute
+from django_autowired.status import HTTP_422_UNPROCESSABLE_ENTITY
+from pydantic import BaseModel
+from pydantic.fields import ModelField
+from pydantic.json import ENCODERS_BY_TYPE
+from pydantic.schema import field_schema
+from pydantic.schema import get_flat_models_from_fields
+from pydantic.schema import get_model_name_map
+from pydantic.schema import model_process_schema
+from pydantic.utils import lenient_issubclass
 
 validation_error_definition = {
     "title": "ValidationError",
@@ -75,15 +75,13 @@ DictIntStrAny = Dict[Union[int, str], Any]
 
 
 def get_flat_models_from_routes(
-        routes: Sequence[Callable],
+    routes: Sequence[Callable],
 ) -> Set[Union[Type[BaseModel], Type[Enum]]]:
     body_fields_from_routes: List[ModelField] = []
     responses_from_routes: List[ModelField] = []
     request_fields_from_routes: List[ModelField] = []
     for route in routes:
-        if getattr(route, "include_in_schema", None) and isinstance(
-                route, ViewRoute
-        ):
+        if getattr(route, "include_in_schema", None) and isinstance(route, ViewRoute):
             if route.body_field:
                 assert isinstance(
                     route.body_field, ModelField
@@ -102,9 +100,9 @@ def get_flat_models_from_routes(
 
 
 def get_model_definitions(
-        *,
-        flat_models: Set[Union[Type[BaseModel], Type[Enum]]],
-        model_name_map: Dict[Union[Type[BaseModel], Type[Enum]], str],
+    *,
+    flat_models: Set[Union[Type[BaseModel], Type[Enum]]],
+    model_name_map: Dict[Union[Type[BaseModel], Type[Enum]], str],
 ) -> Dict[str, Any]:
     definitions: Dict[str, Dict] = {}
     for model in flat_models:
@@ -152,9 +150,9 @@ def get_openapi_operation_metadata(*, route: ViewRoute, method: str) -> Dict:
 
 
 def get_openapi_operation_parameters(
-        *,
-        all_route_params: Sequence[ModelField],
-        model_name_map: Dict[Union[Type[BaseModel], Type[Enum]], str],
+    *,
+    all_route_params: Sequence[ModelField],
+    model_name_map: Dict[Union[Type[BaseModel], Type[Enum]], str],
 ) -> List[Dict[str, Any]]:
     parameters = []
     for param in all_route_params:
@@ -166,8 +164,10 @@ def get_openapi_operation_parameters(
             "in": field_info.in_.value,
             "required": param.required,
             "schema": field_schema(
-                param, model_name_map=model_name_map, ref_prefix=REF_PREFIX  # type: ignore
-            )[0],
+                param, model_name_map=model_name_map, ref_prefix=REF_PREFIX
+            )[
+                0
+            ],  # type: ignore
         }
         if field_info.description:
             parameter["description"] = field_info.description
@@ -178,9 +178,9 @@ def get_openapi_operation_parameters(
 
 
 def get_openapi_operation_request_body(
-        *,
-        body_field: Optional[ModelField],
-        model_name_map: Dict[Union[Type[BaseModel], Type[Enum]], str],
+    *,
+    body_field: Optional[ModelField],
+    model_name_map: Dict[Union[Type[BaseModel], Type[Enum]], str],
 ) -> Optional[Dict]:
     if not body_field:
         return None
@@ -200,13 +200,12 @@ def get_openapi_operation_request_body(
 
 
 def get_openapi_path(
-        *, route: ViewRoute, model_name_map: Dict[Type, str]
+    *, route: ViewRoute, model_name_map: Dict[Type, str]
 ) -> Tuple[Dict, Dict]:
     path = {}
     definitions: Dict[str, Any] = {}
     assert route.methods is not None, "Methods must be a list"
-    assert route.response_class, "A response class is n" \
-                                 "eeded to generate OpenAPI"
+    assert route.response_class, "A response class is n" "eeded to generate OpenAPI"
     #
     route_response_media_type = "application/json"
     if route.include_in_schema:
@@ -234,7 +233,8 @@ def get_openapi_path(
             ] = route.response_description
             if (
                 # route_response_media_type
-                route.status_code not in STATUS_CODES_WITH_NO_BODY
+                route.status_code
+                not in STATUS_CODES_WITH_NO_BODY
             ):
                 response_schema = {"type": "string"}
                 if lenient_issubclass(route.response_class, JsonResponse):
@@ -254,10 +254,10 @@ def get_openapi_path(
             http422 = str(HTTP_422_UNPROCESSABLE_ENTITY)
             #
             if (all_route_params or route.body_field) and not any(
-                    [
-                        status in operation["responses"]
-                        for status in [http422, "4XX", "default"]
-                    ]
+                [
+                    status in operation["responses"]
+                    for status in [http422, "4XX", "default"]
+                ]
             ):
                 operation["responses"][http422] = {
                     "description": "Validation Error",
@@ -280,13 +280,13 @@ def get_openapi_path(
 
 
 def get_openapi(
-        *,
-        title: str,
-        version: str,
-        openapi_version: str = "3.0.2",
-        description: Optional[str] = None,
-        routes: Sequence,
-        tags: Optional[List[Dict[str, Any]]] = None,
+    *,
+    title: str,
+    version: str,
+    openapi_version: str = "3.0.2",
+    description: Optional[str] = None,
+    routes: Sequence,
+    tags: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict:
     info = {"title": title, "version": version}
     if description:
@@ -322,7 +322,7 @@ def get_openapi(
 
 
 def generate_encoders_by_class_tuples(
-        type_encoder_map: Dict[Any, Callable]
+    type_encoder_map: Dict[Any, Callable]
 ) -> Dict[Callable, Tuple]:
     encoders_by_class_tuples: Dict[Callable, Tuple] = defaultdict(tuple)
     for type_, encoder in type_encoder_map.items():
@@ -334,15 +334,15 @@ encoders_by_class_tuples = generate_encoders_by_class_tuples(ENCODERS_BY_TYPE)
 
 
 def jsonable_encoder(
-        obj: Any,
-        include: Optional[Union[SetIntStr, DictIntStrAny]] = None,
-        exclude: Optional[Union[SetIntStr, DictIntStrAny]] = None,
-        by_alias: bool = True,
-        exclude_unset: bool = False,
-        exclude_defaults: bool = False,
-        exclude_none: bool = False,
-        custom_encoder: dict = {},
-        sqlalchemy_safe: bool = True,
+    obj: Any,
+    include: Optional[Union[SetIntStr, DictIntStrAny]] = None,
+    exclude: Optional[Union[SetIntStr, DictIntStrAny]] = None,
+    by_alias: bool = True,
+    exclude_unset: bool = False,
+    exclude_defaults: bool = False,
+    exclude_none: bool = False,
+    custom_encoder: dict = {},
+    sqlalchemy_safe: bool = True,
 ) -> Any:
     if include is not None and not isinstance(include, set):
         include = set(include)
@@ -379,13 +379,13 @@ def jsonable_encoder(
         encoded_dict = {}
         for key, value in obj.items():
             if (
-                    (
-                            not sqlalchemy_safe
-                            or (not isinstance(key, str))
-                            or (not key.startswith("_sa"))
-                    )
-                    and (value is not None or not exclude_none)
-                    and ((include and key in include) or not exclude or key not in exclude)
+                (
+                    not sqlalchemy_safe
+                    or (not isinstance(key, str))
+                    or (not key.startswith("_sa"))
+                )
+                and (value is not None or not exclude_none)
+                and ((include and key in include) or not exclude or key not in exclude)
             ):
                 encoded_key = jsonable_encoder(
                     key,
@@ -460,14 +460,14 @@ def jsonable_encoder(
 
 class OpenAPISchemaGenerator(object):
     def __init__(
-            self,
-            *,
-            title: str = "",
-            version: str = "",
-            openapi_version: str = "3.0.2",
-            description: Optional[str] = None,
-            urlpatterns: List[URLPattern] = None,
-            view_route: Dict[Callable, ViewRoute],
+        self,
+        *,
+        title: str = "",
+        version: str = "",
+        openapi_version: str = "3.0.2",
+        description: Optional[str] = None,
+        urlpatterns: Optional[List[URLPattern]] = None,
+        view_route: Dict[Callable, ViewRoute],
     ):
         self.title = title
         self.version = version
@@ -485,7 +485,8 @@ class OpenAPISchemaGenerator(object):
                 urls = import_module(urlconf)
             else:
                 urls = urlconf
-            self.patterns = urls.urlpatterns
+            if hasattr(urls, "urlpatterns"):
+                self.patterns = urls.urlpatterns  # type: ignore
         self.set_route_path()
 
     def set_route_path(self):
@@ -494,7 +495,7 @@ class OpenAPISchemaGenerator(object):
         routes = self.view_route
         self.routes = []
         for r in routes.keys():
-            fun_name = '.'.join(r.__qualname__.split('.')[:-1])
+            fun_name = ".".join(r.__qualname__.split(".")[:-1])
             for e in endpoints:
                 path, callback = e
                 if callback.__qualname__ == fun_name:
@@ -503,12 +504,12 @@ class OpenAPISchemaGenerator(object):
                     continue
 
     def get_api_endpoints(
-            self,
-            patterns: List[URLPattern] = None,
-            prefix: str = '',
-            app_name: str = None,
-            namespace: str = None,
-            ignored_endpoints: Set = None
+        self,
+        patterns: Optional[List[URLPattern]] = None,
+        prefix: str = "",
+        app_name: Optional[str] = None,
+        namespace: Optional[str] = None,
+        ignored_endpoints: Optional[Set] = None,
     ) -> List[Tuple[str, Any]]:
         if patterns is None:
             patterns = self.patterns
@@ -517,32 +518,37 @@ class OpenAPISchemaGenerator(object):
         if ignored_endpoints is None:
             ignored_endpoints = set()
 
-        for pattern in patterns:
-            path_regex = prefix + str(pattern.pattern)
-            if isinstance(pattern, URLPattern):
-                try:
-                    path = self.get_path_from_regex(path_regex)
-                    callback = pattern.callback
-                    if path in ignored_endpoints:
-                        continue
-                    ignored_endpoints.add(path)
+        if patterns:
+            for pattern in patterns:
+                path_regex = prefix + str(pattern.pattern)
+                if isinstance(pattern, URLPattern):
+                    try:
+                        path = self.get_path_from_regex(path_regex)
+                        callback = pattern.callback
+                        if path in ignored_endpoints:
+                            continue
+                        ignored_endpoints.add(path)
 
-                    endpoint = (path, callback)
-                    api_endpoints.append(endpoint)
-                except Exception:
-                    logger.warning('failed to enumerate view', exc_info=True)
+                        endpoint = (path, callback)
+                        api_endpoints.append(endpoint)
+                    except Exception:
+                        logger.warning("failed to enumerate view", exc_info=True)
 
-            elif isinstance(pattern, URLResolver):
-                nested_endpoints = self.get_api_endpoints(
-                    patterns=pattern.url_patterns,
-                    prefix=path_regex,
-                    app_name="%s:%s" % (app_name, pattern.app_name) if app_name else pattern.app_name,
-                    namespace="%s:%s" % (namespace, pattern.namespace) if namespace else pattern.namespace,
-                    ignored_endpoints=ignored_endpoints
-                )
-                api_endpoints.extend(nested_endpoints)
-            else:
-                raise TypeError(f"unknown pattern type {type(pattern)}")
+                elif isinstance(pattern, URLResolver):
+                    nested_endpoints = self.get_api_endpoints(
+                        patterns=pattern.url_patterns,
+                        prefix=path_regex,
+                        app_name="%s:%s" % (app_name, pattern.app_name)
+                        if app_name
+                        else pattern.app_name,
+                        namespace="%s:%s" % (namespace, pattern.namespace)
+                        if namespace
+                        else pattern.namespace,
+                        ignored_endpoints=ignored_endpoints,
+                    )
+                    api_endpoints.extend(nested_endpoints)
+                else:
+                    raise TypeError(f"unknown pattern type {type(pattern)}")
 
         return api_endpoints
 
@@ -553,7 +559,7 @@ class OpenAPISchemaGenerator(object):
         1. ^(?P<a>\w+)/b/(\w+)$ ==> ^<a>/b/(\w+)$
         2. ^(?P<a>\w+)/b/(?P<c>\w+)/$ ==> ^<a>/b/<c>/$
         """
-        named_group_matcher = re.compile(r'\(\?P(<\w+>)')
+        named_group_matcher = re.compile(r"\(\?P(<\w+>)")
         named_group_indices = [
             (m.start(0), m.end(0), m.group(1))
             for m in named_group_matcher.finditer(pattern)
@@ -568,14 +574,16 @@ class OpenAPISchemaGenerator(object):
                 # If brackets are balanced, the end of the string for the current
                 # named capture group pattern has been reached.
                 if unmatched_open_brackets == 0:
-                    group_pattern_and_name.append((pattern[start:end + idx], group_name))
+                    group_pattern_and_name.append(
+                        (pattern[start : end + idx], group_name)
+                    )
                     break
 
                 # Check for unescaped `(` and `)`. They mark the start and end of a
                 # nested group.
-                if val == '(' and prev_char != '\\':
+                if val == "(" and prev_char != "\\":
                     unmatched_open_brackets += 1
-                elif val == ')' and prev_char != '\\':
+                elif val == ")" and prev_char != "\\":
                     unmatched_open_brackets -= 1
                 prev_char = val
 
@@ -591,24 +599,26 @@ class OpenAPISchemaGenerator(object):
         1. ^(?P<a>\w+)/b/(\w+)$ ==> ^(?P<a>\w+)/b/<var>$
         2. ^(?P<a>\w+)/b/((x|y)\w+)$ ==> ^(?P<a>\w+)/b/<var>$
         """
-        unnamed_group_matcher = re.compile(r'\(')
-        unnamed_group_indices = [m.start(0) for m in unnamed_group_matcher.finditer(pattern)]
+        unnamed_group_matcher = re.compile(r"\(")
+        unnamed_group_indices = [
+            m.start(0) for m in unnamed_group_matcher.finditer(pattern)
+        ]
         # Indices of the start of unnamed capture groups.
         group_indices = []
         # Loop over the start indices of the groups.
         for start in unnamed_group_indices:
             # Handle nested parentheses, e.g. '^b/((x|y)\w+)$'.
             unmatched_open_brackets, prev_char = 1, None
-            for idx, val in enumerate(list(pattern[start + 1:])):
+            for idx, val in enumerate(list(pattern[start + 1 :])):
                 if unmatched_open_brackets == 0:
                     group_indices.append((start, start + 1 + idx))
                     break
 
                 # Check for unescaped `(` and `)`. They mark the start and end of
                 # a nested group.
-                if val == '(' and prev_char != '\\':
+                if val == "(" and prev_char != "\\":
                     unmatched_open_brackets += 1
-                elif val == ')' and prev_char != '\\':
+                elif val == ")" and prev_char != "\\":
                     unmatched_open_brackets -= 1
                 prev_char = val
 
@@ -628,10 +638,10 @@ class OpenAPISchemaGenerator(object):
             for start, end in group_start_end_indices:
                 if prev_end:
                     final_pattern.append(pattern[prev_end:start])
-                final_pattern.append(pattern[:start] + '<var>')
+                final_pattern.append(pattern[:start] + "<var>")
                 prev_end = end
             final_pattern.append(pattern[prev_end:])
-            return ''.join(final_pattern)
+            return "".join(final_pattern)
         else:
             return pattern
 
@@ -645,55 +655,59 @@ class OpenAPISchemaGenerator(object):
         pattern = cls.replace_named_groups(pattern)
         pattern = cls.replace_unnamed_groups(pattern)
         # clean up any outstanding regex-y characters.
-        pattern = pattern.replace('^', '').replace('$', '').replace('?', '')
-        if not pattern.startswith('/'):
-            pattern = '/' + pattern
+        pattern = pattern.replace("^", "").replace("$", "").replace("?", "")
+        if not pattern.startswith("/"):
+            pattern = "/" + pattern
         return pattern
 
     @classmethod
     def unescape(cls, s) -> str:
         """Unescape all backslash escapes from `s`.
-
         :param str s: string with backslash escapes
         :rtype: str
         """
-        # unlike .replace('\\', ''), this corectly transforms a double backslash into a single backslash
-        return re.sub(r'\\(.)', r'\1', s)
+        # unlike .replace('\\', ''), this corectly transforms a double backslash
+        # into a single backslash
+        return re.sub(r"\\(.)", r"\1", s)
 
     @classmethod
     def unescape_path(cls, path: str) -> str:
-        """Remove backslashe escapes from all path components outside {parameters}. This is needed because
-        ``simplify_regex`` does not handle this correctly.
+        """Remove backslashe escapes from all path components outside {parameters}.
+        This is needed becausen ``simplify_regex`` does not handle this correctly.
 
-        **NOTE:** this might destructively affect some url regex patterns that contain metacharacters (e.g. \\w, \\d)
+        **NOTE:** this might destructively affect some url regex patterns
+        that contain metacharacters (e.g. \\w, \\d)
         outside path parameter groups; if you are in this category, God help you
 
         :param str path: path possibly containing
         :return: the unescaped path
         :rtype: str
         """
-        PATH_PARAMETER_RE = re.compile(r'{(?P<parameter>\w+)}')
-        clean_path = ''
+        PATH_PARAMETER_RE = re.compile(r"{(?P<parameter>\w+)}")
+        clean_path = ""
         while path:
             match = PATH_PARAMETER_RE.search(path)
             if not match:
                 clean_path += cls.unescape(path)
                 break
-            clean_path += cls.unescape(path[:match.start()])
+            clean_path += cls.unescape(path[: match.start()])
             clean_path += match.group()
-            path = path[match.end():]
+            path = path[match.end() :]
         return clean_path
 
     @classmethod
     def get_path_from_regex(cls, path_regex: str):
-        if path_regex.endswith(')'):
-            logger.warning("url pattern does not end in $ ('%s') - unexpected things might happen", path_regex)
+        if path_regex.endswith(")"):
+            logger.warning(
+                "url pattern does not end in $ ('%s') - unexpected things might happen",
+                path_regex,
+            )
         path = cls.simplify_regex(path_regex)
         _PATH_PARAMETER_COMPONENT_RE = re.compile(
-            r'<(?:(?P<converter>[^>:]+):)?(?P<parameter>\w+)>'
+            r"<(?:(?P<converter>[^>:]+):)?(?P<parameter>\w+)>"
         )
         # Strip Django 2.0 convertors as they are incompatible with uritemplate format
-        res = re.sub(_PATH_PARAMETER_COMPONENT_RE, r'{\g<parameter>}', path)
+        res = re.sub(_PATH_PARAMETER_COMPONENT_RE, r"{\g<parameter>}", path)
         return cls.unescape_path(res)
 
     def get_schema(self) -> Dict:
